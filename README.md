@@ -55,6 +55,9 @@ curves the game bakes from the car's tune) and writes them back turned and moved
 ([profiles/forza-horizon-6.json](profiles/forza-horizon-6.json)), so a game update needs a new
 profile rather than a new app.
 
+AirShift can stay open while the game starts or restarts: it waits for the game to load and keeps
+looking until your car shows up.
+
 Before it writes anything, AirShift checks every value it reads: the pointer chain has to lead to
 a car whose speed, engine speed, wheel radii and hub heights are all in a sane range. If the game
 version is not one the profile lists, AirShift stays read-only until you choose

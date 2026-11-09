@@ -15,6 +15,7 @@ internal sealed class Win32GameMemory : IGameMemory
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const uint Synchronize = 0x00100000;
     private const uint StillActive = 259;
+    private const int ErrorInsufficientBuffer = 122;
 
     private nint _handle;
 
@@ -68,25 +69,29 @@ internal sealed class Win32GameMemory : IGameMemory
                     message = "Found the game but could not read it. Restart AirShift as administrator.";
                     return null;
                 }
-                string? version = null;
-                try
+                // The Microsoft Store / Xbox edition carries its own version (3.x) in its package, the one
+                // the Store shows; its executable inside says the same as Steam's (6.x). So the package
+                // comes first, then the file, then the version resource of the image in memory (the
+                // Store edition's folder is protected and Windows may not open the file for us).
+                var version = ImageVersion.FromPackagePath(PackageFullName(handle))
+                              ?? ImageVersion.FromPackagePath(SafePath(module));
+                if (version is null)
                 {
-                    var info = module.FileVersionInfo;
-                    version = info.FileVersion ?? info.ProductVersion;
-                }
-                catch (Exception)
-                {
+                    try
+                    {
+                        var info = module.FileVersionInfo;
+                        version = info.FileVersion ?? info.ProductVersion;
+                    }
+                    catch (Exception)
+                    {
+                    }
                 }
                 status = GameStatus.Attached;
                 message = "Attached.";
                 var memory = new Win32GameMemory(handle, process.Id, module.BaseAddress, module.ModuleMemorySize, version);
-                // The Microsoft Store version's file sits in a protected folder that Windows will
-                // not open for us: read the version from the game's image in memory, or else from
-                // the package folder's name.
                 if (string.IsNullOrWhiteSpace(memory.FileVersion))
                 {
-                    memory.FileVersion = ImageVersion.FromImage(memory.ReadBytes, memory.ModuleBase, memory.ModuleSize)
-                                         ?? ImageVersion.FromPackagePath(SafePath(module));
+                    memory.FileVersion = ImageVersion.FromImage(memory.ReadBytes, memory.ModuleBase, memory.ModuleSize);
                 }
                 return memory;
             }
@@ -98,6 +103,22 @@ internal sealed class Win32GameMemory : IGameMemory
         status = GameStatus.NotRunning;
         message = "Waiting for " + profile.Title + ".";
         return null;
+    }
+
+    /// <summary>The package full name of a Microsoft Store / Xbox game (Publisher.Game_3.483.970.0_x64__id), null for any other.</summary>
+    private static string? PackageFullName(nint process)
+    {
+        try
+        {
+            uint length = 0;
+            if (GetPackageFullName(process, ref length, null) != ErrorInsufficientBuffer || length == 0) return null;
+            var name = new char[length];
+            return GetPackageFullName(process, ref length, name) == 0 ? new string(name, 0, (int)Math.Max(0, length - 1)) : null;
+        }
+        catch (Exception exception) when (exception is EntryPointNotFoundException or DllNotFoundException)
+        {
+            return null;
+        }
     }
 
     private static string? SafePath(ProcessModule module)
@@ -162,4 +183,7 @@ internal sealed class Win32GameMemory : IGameMemory
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(nint handle);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetPackageFullName(nint process, ref uint length, [Out] char[]? fullName);
 }

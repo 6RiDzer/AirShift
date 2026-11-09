@@ -154,6 +154,15 @@ public sealed class FakeGame : IGameMemory
         return values;
     }
 
+    /// <summary>The game's code becomes readable (it loads or unpacks a moment after the game starts).</summary>
+    public void LoadCode() => PlaceSignature();
+
+    /// <summary>Points a global or field somewhere, as the game does while it loads.</summary>
+    public void SetPointer(long address, long value) => PutPtr(address, value);
+
+    /// <summary>How many times the whole module was read (one per signature search).</summary>
+    public int ModuleScans { get; private set; }
+
     private void PlaceSignature()
     {
         var at = Base + SignatureOffset;
@@ -170,6 +179,7 @@ public sealed class FakeGame : IGameMemory
 
     public bool Read(long address, Span<byte> buffer)
     {
+        if (address == Base && buffer.Length > 0x10000) ModuleScans++;
         var source = TrySlice(address, buffer.Length);
         if (source is null) return false;
         source.Value.Span.CopyTo(buffer);

@@ -34,9 +34,19 @@ public sealed class CarLocator
 {
     private const int ScanChunk = 4 * 1024 * 1024;
 
+    /// <summary>
+    /// While no car is found, a context that is not proven (none yet, or the profile's fallback) is looked
+    /// for again after this many searches: about every five seconds at one search a second. Right after
+    /// the game starts its code may not be readable yet, and the fallback only fits one edition.
+    /// </summary>
+    public const int SearchAgainAfter = 5;
+
     private readonly IGameMemory _memory;
     private readonly GameProfile _profile;
     private long? _contextRva;
+    private bool _contextProven;
+    private bool _searched;
+    private int _missesSinceSearch;
 
     public CarLocator(IGameMemory memory, GameProfile profile)
     {
@@ -53,7 +63,12 @@ public sealed class CarLocator
 
     public long? ResolveContext()
     {
-        if (_contextRva is { } cached) return cached;
+        if (_contextRva is { } cached && (_contextProven || _missesSinceSearch < SearchAgainAfter)) return cached;
+        if (_contextRva is null && _searched && _missesSinceSearch < SearchAgainAfter) return null;
+        _searched = true;
+        _missesSinceSearch = 0;
+        _contextRva = null;
+        _contextProven = false;
 
         var ctx = _profile.Context;
         var signature = Signature.Parse(ctx.Signature);
@@ -61,16 +76,19 @@ public sealed class CarLocator
         SignatureHits = hits.Count;
         if (hits.Count == 1)
         {
+            // The game's own code names the global: it holds for this build even while the game is still
+            // loading and the global is empty, so the search keeps following it until a car shows up.
             var instruction = hits[0] + ctx.InstructionOffset;
             var displacement = _memory.Int32(instruction + ctx.DisplacementOffset);
             if (displacement is { } disp)
             {
                 var target = instruction + ctx.InstructionLength + disp;
                 var rva = target - _memory.ModuleBase;
-                if (rva > 0 && rva < _memory.ModuleSize && _memory.Pointer(target) is not null)
+                if (rva > 0 && rva < _memory.ModuleSize)
                 {
                     ContextSource = "signature";
                     _contextRva = rva;
+                    _contextProven = true;
                     return rva;
                 }
             }
@@ -118,7 +136,23 @@ public sealed class CarLocator
         return hits;
     }
 
+    /// <summary>
+    /// Looks for the player's car. A search that finds none counts toward looking for the context again
+    /// (see <see cref="SearchAgainAfter"/>); a car found through the fallback proves it.
+    /// </summary>
     public LocateResult Locate()
+    {
+        var result = Search();
+        if (result.Car is null) _missesSinceSearch++;
+        else
+        {
+            _contextProven = true;
+            _missesSinceSearch = 0;
+        }
+        return result;
+    }
+
+    private LocateResult Search()
     {
         var rva = ResolveContext();
         if (rva is null) return new(LocateStatus.NoContext, null, "This game build is not supported yet (" + ContextSource + ").", 0, 0);
@@ -258,7 +292,7 @@ public sealed class CarLocator
     {
         var sb = new StringBuilder();
         sb.AppendLine($"AirShift probe · profile {_profile.Id} r{_profile.Revision}");
-        sb.AppendLine($"Game file version: {_memory.FileVersion ?? "unknown"} ({(_profile.MatchesBuild(_memory.FileVersion) ? "known build" : "build not in profile")})");
+        sb.AppendLine($"Game version: {_memory.FileVersion ?? "unknown"} ({(_profile.MatchesBuild(_memory.FileVersion) ? "known build" : "build not in profile")})");
         sb.AppendLine($"Module base 0x{_memory.ModuleBase:X}, size 0x{_memory.ModuleSize:X}");
         var rva = ResolveContext();
         sb.AppendLine($"Context: {(rva is null ? "none" : "rva 0x" + rva.Value.ToString("X"))} via {ContextSource} (signature hits {SignatureHits})");

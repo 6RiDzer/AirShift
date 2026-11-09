@@ -70,6 +70,10 @@ changes.
 ```
 
 - `game.status`: `not-running`, `cannot-open` (needs administrator) or `attached`.
+- `game.fileVersion`: the game's version. Since 0.4.2 the Microsoft Store / Xbox edition gives
+  its package version (3.x, as the Store shows it); Steam gives the executable's (6.x).
+- `message` while the car is not found yet: right after the game starts it reads
+  `Waiting for Forza Horizon 6 to load.` AirShift keeps looking until the car shows up (0.4.2).
 - `air.level`: `ride`, `low` or `parked` (the level the car is at or moving to).
 - `air.frontHeight` / `rearHeight`: live height per axle as a share of stock clearance
   (0 = stock, negative = lower).

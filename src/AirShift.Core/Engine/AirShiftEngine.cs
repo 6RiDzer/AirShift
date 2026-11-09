@@ -39,6 +39,11 @@ public sealed class AirShiftEngine : IDisposable
     private string _message = "Waiting for Forza Horizon 6.";
     private double _nextAttach;
     private double _nextLocate;
+    private double _attachedAt;
+    private string? _searchNote;
+
+    /// <summary>For this long after AirShift finds the game, a game whose data is not there yet is still loading.</summary>
+    public const double LoadingSeconds = 120.0;
 
     private CarReading? _car;
     private string? _carKey;
@@ -255,7 +260,11 @@ public sealed class AirShiftEngine : IDisposable
             if (result.Car is null)
             {
                 if (_car is not null) LoseCar(result.Message);
-                _message = result.Message;
+                _message = result.Status == LocateStatus.NoContext && now - _attachedAt < LoadingSeconds
+                    ? $"Waiting for {_profile.Title} to load."
+                    : result.Message;
+                NoteSearch(result);
+                FlushLog(now);
                 Publish();
                 return;
             }
@@ -361,6 +370,17 @@ public sealed class AirShiftEngine : IDisposable
 
     private double _now;
 
+    /// <summary>Says in the log where the car search stands each time that changes, so a car that does not show up can be explained.</summary>
+    private void NoteSearch(LocateResult result)
+    {
+        var note = result.Status == LocateStatus.NoContext
+            ? $"{result.Status}, {_locator!.ContextSource}"
+            : $"{result.Status}, game data via {_locator!.ContextSource}, {result.Entities} entities, {result.Rejected} rejected";
+        if (note == _searchNote) return;
+        _searchNote = note;
+        Log?.Invoke("Looking for the car: " + note + ".");
+    }
+
     private void TryAttach()
     {
         var memory = _opener(_profile, out var status, out var message);
@@ -372,7 +392,10 @@ public sealed class AirShiftEngine : IDisposable
         _wheels = new WheelAlignment(memory, _profile, line => Log?.Invoke(line));
         _game = GameStatus.Attached;
         _message = "Looking for your car.";
-        Log?.Invoke($"Attached to {_profile.Title} (file version {memory.FileVersion ?? "unknown"}).");
+        _attachedAt = _now;
+        _searchNote = null;
+        _nextLocate = 0;
+        Log?.Invoke($"Attached to {_profile.Title} (game version {memory.FileVersion ?? "unknown"}).");
     }
 
     private void Detach(string message)
@@ -410,6 +433,7 @@ public sealed class AirShiftEngine : IDisposable
     {
         var replacing = _car is not null;
         LoseCar("New car.");
+        _searchNote = null;
         _car = reading;
         _radii = reading.Radii.Select(r => (double)r).ToArray();
         var heights = reading.HubHeights.Select(h => (double)h).ToArray();

@@ -62,7 +62,7 @@ public static partial class ImageVersion
         }
     }
 
-    /// <summary>The version in a Store package folder name, such as Publisher.Game_3.483.970.0_x64__abc.</summary>
+    /// <summary>The version in a Store package full name or folder, such as Publisher.Game_3.483.970.0_x64__abc.</summary>
     public static string? FromPackagePath(string? path)
     {
         if (string.IsNullOrEmpty(path)) return null;
