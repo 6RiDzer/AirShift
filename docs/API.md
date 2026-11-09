@@ -114,6 +114,13 @@ ever goes, in the same unit); `highest` (Maxi, the highest stance; the front nev
 the settle after a drop; the speed guard. `ranges` gives each slider's bounds. `tune.set`
 changes only the fields it carries; out-of-range values are held at the bounds.
 
+Since 0.4.1 a `tune.set` that changes `lowest` or `highest` shows it on the car, as the window's
+sliders do: the car goes to Mini (or each axle to its highest stance) with a normal air move,
+follows the next changes closely, and goes back to its level 2 s after the last one. A client
+can send `tune.set` every 100 to 150 ms while its slider moves to make the move live. Choosing
+a level, a stance or Reset ends the preview at once. Mini is not shown above the speed guard's
+air-down speed (the setting is still saved).
+
 ## Starting AirShift from another app
 
 `AirShift.exe --minimized` starts it minimized to the taskbar. If AirShift is already running,

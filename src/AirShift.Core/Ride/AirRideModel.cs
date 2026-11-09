@@ -83,6 +83,9 @@ public sealed class WheelMove
         To = to;
         Delay = Math.Max(0, delay);
         Duration = Math.Max(0.12, duration);
+        // A body already under a floor that was just raised (Mini moved up) rises from where it
+        // is; the floor never lifts it in one step.
+        floor = Math.Min(floor, Math.Min(from, to));
         Floor = floor;
         var down = to < from;
         var travel = Math.Abs(to - from);

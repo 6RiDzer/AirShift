@@ -33,6 +33,12 @@ public sealed record EngineState
 
     public double RearStanceTop { get; init; } = RideSettings.RearStanceMax;
 
+    /// <summary>Mini or Maxi showing on the car for a moment after it changed; None otherwise.</summary>
+    public HeightPreview Preview { get; init; }
+
+    /// <summary>How far each axle of the current car can move; null without a car.</summary>
+    public AxleRoom? Axles { get; init; }
+
     /// <summary>Camber per axle the user set (left wheel's sign); null is the car's own.</summary>
     public double? CamberFront { get; init; }
 
@@ -57,6 +63,28 @@ public sealed record EngineState
     public string Message { get; init; } = "Waiting for Forza Horizon 6.";
     public int Reapplied { get; init; }
     public long Revision { get; init; }
+}
+
+/// <summary>A height the car shows for a moment after Mini or Maxi changed.</summary>
+public enum HeightPreview
+{
+    None,
+    Lowest,
+    Highest,
+}
+
+/// <summary>
+/// Room per axle in millimetres: stock clearance (stock hub height over the wheel radius, what
+/// the percentages are shares of), and the deepest a hub may go under stock at all.
+/// </summary>
+public sealed record AxleRoom(double FrontClearanceMm, double RearClearanceMm, double FrontDeepestMm, double RearDeepestMm)
+{
+    /// <summary>Millimetres under stock at this Mini.</summary>
+    public double LowestMm(bool front, double lowestPercent) =>
+        Math.Min((front ? FrontClearanceMm : RearClearanceMm) * lowestPercent / 100.0, front ? FrontDeepestMm : RearDeepestMm);
+
+    /// <summary>Millimetres over stock at this stance.</summary>
+    public double RaiseMm(bool front, double stancePercent) => (front ? FrontClearanceMm : RearClearanceMm) * stancePercent / 100.0;
 }
 
 /// <summary>The user's Tune settings as they are now.</summary>

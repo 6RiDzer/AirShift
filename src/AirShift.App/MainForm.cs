@@ -10,7 +10,7 @@ internal sealed class MainForm : Form
     private const int HotkeyToggle = 1;
     private const int HotkeyParked = 2;
     private const int WmHotkey = 0x0312;
-    private const int PageHeight = 592;
+    private const int PageHeight = 640;
 
     private readonly AirShiftEngine _engine;
     private readonly Action<string> _log;
@@ -50,8 +50,9 @@ internal sealed class MainForm : Form
     private readonly Slider _lowFront = new() { Label = "Low: air out front", Minimum = 0, Maximum = RideSettings.DropMax, Mark = 100, ValueWidth = 150 };
     private readonly Slider _lowRear = new() { Label = "Low: air out rear", Minimum = 0, Maximum = RideSettings.DropMax, Mark = 100, ValueWidth = 150 };
     private readonly Slider _parkedDrop = new() { Label = "Parked: air out", Minimum = 0, Maximum = RideSettings.DropMax, Mark = 100, ValueWidth = 150 };
-    private readonly Slider _lowest = new() { Label = "Mini: lowest the car goes (air out)", Minimum = RideSettings.LowestMin, Maximum = RideSettings.LowestMax, Mark = 100 };
-    private readonly Slider _highest = new() { Label = "Maxi: highest stance (front / rear)", Minimum = 0, Maximum = RideSettings.FrontStanceMax, ValueWidth = 130 };
+    private readonly Slider _lowest = new() { Label = "Mini: lowest the car sits", Minimum = RideSettings.LowestMin, Maximum = RideSettings.LowestMax, Mark = 100, ValueWidth = 230 };
+    private readonly Slider _highest = new() { Label = "Maxi: highest the car sits", Minimum = 0, Maximum = RideSettings.FrontStanceMax, ValueWidth = 230 };
+    private readonly Label _heightsHint = new();
     private readonly Label _stanceHint = new();
     private readonly Slider _exhaust = new() { Label = "Dump time", Minimum = RideSettings.DumpMin, Maximum = RideSettings.DumpMax, Step = 0.1 };
     private readonly Slider _fill = new() { Label = "Fill time", Minimum = RideSettings.FillMin, Maximum = RideSettings.FillMax, Step = 0.1 };
@@ -67,6 +68,7 @@ internal sealed class MainForm : Form
 
     private EngineState? _shown;
     private TuneState? _shownTune;
+    private AxleRoom? _shownAxles;
     private string _report = "";
     private bool _hotkeysOk;
     private DateTime _pinnedUntil;
@@ -181,10 +183,25 @@ internal sealed class MainForm : Form
         _stanceHint.ForeColor = Theme.Muted;
         _stanceHint.Font = Theme.Ui(8f);
 
-        _allow.Location = new Point(20, 440);
+        // Mini and Maxi: the car shows each one while it changes, then goes back to its level.
+        _lowest.Location = new Point(20, 440);
+        _lowest.Size = new Size(440, 44);
+        _highest.Location = new Point(20, 486);
+        _highest.Size = new Size(440, 44);
+        _lowest.Format = MiniText;
+        _highest.Format = MaxiText;
+        Live(_lowest, v => _engine.ChangeSettingsAsync(s => s.LowestPercent = v));
+        Live(_highest, v => _engine.ChangeSettingsAsync(s => s.HighestPercent = v));
+        _heightsHint.Text = $"The car shows Mini or Maxi while you move them, then goes back after {AirShiftEngine.PreviewHoldSeconds:0} s.";
+        _heightsHint.Location = new Point(24, 532);
+        _heightsHint.Size = new Size(436, 18);
+        _heightsHint.ForeColor = Theme.Muted;
+        _heightsHint.Font = Theme.Ui(8f);
+
+        _allow.Location = new Point(20, 558);
         _allow.Size = new Size(440, 36);
         _allow.Click += async (_, _) => Show(await _engine.AllowThisBuildAsync());
-        _admin.Location = new Point(20, 440);
+        _admin.Location = new Point(20, 558);
         _admin.Size = new Size(440, 36);
         _admin.Click += (_, _) => RestartElevated();
 
@@ -196,7 +213,23 @@ internal sealed class MainForm : Form
             ForeColor = Theme.Muted,
             Font = Theme.Ui(8f),
         };
-        _ridePage.Controls.AddRange([_view, _air, _ride, _low, _parked, _reset, _message, _front, _rear, _stanceHint, _allow, _admin, keys]);
+        _ridePage.Controls.AddRange([_view, _air, _ride, _low, _parked, _reset, _message, _front, _rear, _stanceHint, _lowest, _highest, _heightsHint, _allow, _admin, keys]);
+    }
+
+    /// <summary>Mini as a share of clearance, and how far under stock that puts each axle of this car.</summary>
+    private string MiniText(double value)
+    {
+        if (_shown?.Axles is not { } room) return $"{value:0} %";
+        return $"{value:0} %  ·  -{room.LowestMm(true, value):0} / -{room.LowestMm(false, value):0} mm";
+    }
+
+    /// <summary>Maxi per axle, and how far over stock that puts each axle of this car.</summary>
+    private string MaxiText(double value)
+    {
+        var front = Math.Min(value, RideSettings.FrontStanceMax);
+        var rear = Math.Min(value, RideSettings.RearStanceMax);
+        var text = $"+{front:0} / +{rear:0} %";
+        return _shown?.Axles is { } room ? $"{text}  ·  +{room.RaiseMm(true, front):0} / +{room.RaiseMm(false, rear):0} mm" : text;
     }
 
     private void BuildWheelsPage()
@@ -285,8 +318,6 @@ internal sealed class MainForm : Form
         Add(_lowFront, AirOut, (s, v) => s.LowFrontPercent = v);
         Add(_lowRear, AirOut, (s, v) => s.LowRearPercent = v);
         Add(_parkedDrop, AirOut, (s, v) => s.ParkedDropPercent = v);
-        Add(_lowest, v => $"{v:0} %", (s, v) => s.LowestPercent = v);
-        Add(_highest, v => $"+{Math.Min(v, RideSettings.FrontStanceMax):0} / +{Math.Min(v, RideSettings.RearStanceMax):0} %", (s, v) => s.HighestPercent = v);
         Add(_exhaust, v => $"{v:0.0} s", (s, v) => s.ExhaustSeconds = v);
         Add(_fill, v => $"{v:0.0} s", (s, v) => s.FillSeconds = v);
 
@@ -378,12 +409,12 @@ internal sealed class MainForm : Form
         _parkedDrop.Value = s.ParkedDropPercent;
         _lowest.Value = s.LowestPercent;
         _highest.Value = s.HighestPercent;
-        foreach (var slider in new[] { _lowFront, _lowRear, _parkedDrop }) slider.Invalidate();
+        foreach (var slider in new[] { _lowFront, _lowRear, _parkedDrop, _lowest, _highest }) slider.Invalidate();
         _front.Maximum = s.StanceTop(true);
         _rear.Maximum = s.StanceTop(false);
         _front.Invalidate();
         _rear.Invalidate();
-        _stanceHint.Text = $"Stance is saved for this car: -50 % to +{s.StanceTop(true):0} % front, +{s.StanceTop(false):0} % rear (Maxi, in Tune).";
+        _stanceHint.Text = $"Stance is saved for this car: -50 % to +{s.StanceTop(true):0} % front, +{s.StanceTop(false):0} % rear (Maxi, below).";
         _exhaust.Value = s.ExhaustSeconds;
         _fill.Value = s.FillSeconds;
         _together.Selected = s.Order == AxleOrder.Together;
@@ -435,6 +466,12 @@ internal sealed class MainForm : Form
         _parked.Selected = s.Level == AirLevel.Parked;
         _front.Value = s.FrontStance;
         _rear.Value = s.RearStance;
+        if (s.Axles != _shownAxles)
+        {
+            _shownAxles = s.Axles;
+            _lowest.Invalidate();
+            _highest.Invalidate();
+        }
         _allow.Visible = s.CarReady && !s.WritesAllowed && !s.BuildKnown && s.FileVersion is not null;
         _admin.Visible = s.Game == GameStatus.CannotOpen && !Win32GameMemory.IsElevated();
         var caption = !s.CarReady ? "No car" : s.Moving ? (s.Level == AirLevel.Ride ? "Filling" : "Dumping") : EngineName(s.Level);

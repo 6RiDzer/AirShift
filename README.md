@@ -19,9 +19,12 @@ check what it does. AirShift is free.
   on its lowest point (Mini) does not bounce.
 - **Stance per car**: front height from -50 % to +15 % and rear from -50 % to +10 % of stock
   clearance, remembered for each car. The car follows the slider while you drag it.
-- **Mini and Maxi** (Tune tab): Mini is the lowest the car can ever go, as air out (100 % by
+- **Mini and Maxi** (Ride tab): Mini is the lowest the car can ever go, as air out (100 % by
   default, up to 130 %); a hub never goes under two thirds of its wheel radius whatever you set.
-  Maxi caps the stance (front +15 %, rear +10 % at most).
+  Maxi caps the stance (front +15 %, rear +10 % at most). Both show in millimetres for the
+  current car, and the car shows them live: while you move Mini it sits at Mini, while you move
+  Maxi it rises to Maxi, and two seconds after the last change it goes back to its level. Mini
+  is not shown above the speed guard's air-down speed.
 - **Camber and track width per car** (Wheels tab): camber per axle from -15° to +5°, and each
   axle's wheels moved out or in by up to 100 mm. AirShift turns and moves the car's own
   suspension curves, so the camber still changes with suspension travel like the stock tune,
