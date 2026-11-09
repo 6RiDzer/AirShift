@@ -29,7 +29,7 @@ internal sealed class Win32GameMemory : IGameMemory
 
     public long ModuleBase { get; }
     public long ModuleSize { get; }
-    public string? FileVersion { get; }
+    public string? FileVersion { get; private set; }
     public int ProcessId { get; }
 
     public bool HasExited => _handle == 0 || !GetExitCodeProcess(_handle, out var code) || code != StillActive;
@@ -79,7 +79,16 @@ internal sealed class Win32GameMemory : IGameMemory
                 }
                 status = GameStatus.Attached;
                 message = "Attached.";
-                return new Win32GameMemory(handle, process.Id, module.BaseAddress, module.ModuleMemorySize, version);
+                var memory = new Win32GameMemory(handle, process.Id, module.BaseAddress, module.ModuleMemorySize, version);
+                // The Microsoft Store version's file sits in a protected folder that Windows will
+                // not open for us: read the version from the game's image in memory, or else from
+                // the package folder's name.
+                if (string.IsNullOrWhiteSpace(memory.FileVersion))
+                {
+                    memory.FileVersion = ImageVersion.FromImage(memory.ReadBytes, memory.ModuleBase, memory.ModuleSize)
+                                         ?? ImageVersion.FromPackagePath(SafePath(module));
+                }
+                return memory;
             }
             finally
             {
@@ -89,6 +98,24 @@ internal sealed class Win32GameMemory : IGameMemory
         status = GameStatus.NotRunning;
         message = "Waiting for " + profile.Title + ".";
         return null;
+    }
+
+    private static string? SafePath(ProcessModule module)
+    {
+        try
+        {
+            return module.FileName;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private byte[]? ReadBytes(long address, int length)
+    {
+        var buffer = new byte[length];
+        return Read(address, buffer) ? buffer : null;
     }
 
     public unsafe bool Read(long address, Span<byte> buffer)
