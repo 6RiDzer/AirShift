@@ -10,4 +10,13 @@
     <Copyright>© 2026 6RiDzer. All rights reserved.</Copyright>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
+  <!-- A release carries no debug information and no path of the machine that built it, and builds the same
+       bytes from the same source. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <PathMap>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))=/_/</PathMap>
+  </PropertyGroup>
 </Project>
