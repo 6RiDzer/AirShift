@@ -19,15 +19,17 @@ public sealed class ApiServer : IDisposable
     private readonly AirShiftEngine _engine;
     private readonly string _appVersion;
     private readonly Action? _show;
+    private readonly Action? _quit;
     private readonly CancellationTokenSource _stop = new();
     private TcpListener? _listener;
     private TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public ApiServer(AirShiftEngine engine, string appVersion, Action? show = null, string? token = null)
+    public ApiServer(AirShiftEngine engine, string appVersion, Action? show = null, string? token = null, Action? quit = null)
     {
         _engine = engine;
         _appVersion = appVersion;
         _show = show;
+        _quit = quit;
         Token = token ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
         _engine.StateChanged += _ => Interlocked.Exchange(ref _changed, new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
     }
@@ -172,7 +174,7 @@ public sealed class ApiServer : IDisposable
                 body = null;
             }
             if (body is null) return (400, Error("Body must be a JSON object."));
-            var result = await ApiContract.Run(_engine, body, _show);
+            var result = await ApiContract.Run(_engine, body, _show, _quit);
             return (result.Ok ? 200 : 409, new JsonObject
             {
                 ["ok"] = result.Ok,

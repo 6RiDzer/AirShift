@@ -175,3 +175,25 @@ public class TuneApiTests
         Assert.False((await AirShift.Core.Api.ApiContract.Run(engine, empty, null)).Ok);
     }
 }
+
+public class QuitApiTests
+{
+    private static GameProfile Profile() => GameProfile.BuiltIn().Single(p => p.Id == "forza-horizon-6");
+
+    [Fact]
+    public async Task App_quit_closes_the_app_and_is_refused_without_a_window()
+    {
+        var engine = new AirShiftEngine(Profile(), (GameProfile _, out GameStatus status, out string message) =>
+        {
+            status = GameStatus.NotRunning;
+            message = "no game";
+            return null;
+        }, new SettingsStore(null));
+        var body = System.Text.Json.Nodes.JsonNode.Parse("""{ "command": "app.quit" }""")!.AsObject();
+        var closed = 0;
+        var result = await AirShift.Core.Api.ApiContract.Run(engine, body, null, () => closed++);
+        Assert.True(result.Ok);
+        Assert.Equal(1, closed);
+        Assert.False((await AirShift.Core.Api.ApiContract.Run(engine, body, null)).Ok);
+    }
+}

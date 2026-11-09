@@ -150,7 +150,7 @@ public static class ApiContract
     };
 
     /// <summary>Runs one command from the API on the engine.</summary>
-    public static async Task<CommandResult> Run(AirShiftEngine engine, JsonObject body, Action? show)
+    public static async Task<CommandResult> Run(AirShiftEngine engine, JsonObject body, Action? show, Action? quit = null)
     {
         var command = body["command"]?.GetValue<string>()?.Trim().ToLowerInvariant();
         switch (command)
@@ -204,6 +204,12 @@ public static class ApiContract
             case "app.show":
                 show?.Invoke();
                 return CommandResult.Done("Shown.");
+            case "app.quit":
+                // As if the user closed the window: the car goes back to stock first. Another app uses it to
+                // put a new AirShift.exe in place and start it again.
+                if (quit is null) return CommandResult.Refused("Unknown command.");
+                quit();
+                return CommandResult.Done("Closing.");
             default:
                 return CommandResult.Refused("Unknown command.");
         }

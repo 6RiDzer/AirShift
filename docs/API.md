@@ -101,6 +101,7 @@ version).
 | `tune.set` | any of `lowFront`, `lowRear`, `parked`, `lowest`, `highest`, `dumpSeconds`, `fillSeconds` (numbers), `order` (`together`, `front-first`, `rear-first`), `settle`, `speedGuard` (booleans) | the Tune settings, as in the window's Tune tab (0.4.0) |
 | `restore` | | stock heights, camber and track now, no ramp; the car's settings are kept |
 | `app.show` | | brings the AirShift window to the front |
+| `app.quit` | | closes AirShift as if its window were closed: the car goes back to stock first (0.4.2). An updater sends it, waits for the process to end, replaces `AirShift.exe` and starts it again |
 
 Commands are state based: sending `preset.set low` twice leaves the car at Low. A stance sent
 while no air move runs reaches the car in 0.15 s, so a client can send it while a slider moves.

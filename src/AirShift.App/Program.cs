@@ -8,7 +8,7 @@ namespace AirShift.App;
 
 internal static class Program
 {
-    public const string Version = "0.4.1";
+    public const string Version = "0.4.2";
     private static Mutex? _single;
 
     [STAThread]
@@ -52,7 +52,8 @@ internal static class Program
         Guard.Launch(log);
 
         MainForm? form = null;
-        using var server = new ApiServer(engine, Version, () => form?.BeginInvoke(() => form.BringToFront2()));
+        using var server = new ApiServer(engine, Version, () => form?.BeginInvoke(() => form.BringToFront2()),
+            quit: () => form?.BeginInvoke(() => form.Close()));
         server.Start();
         var apiPath = ApiDiscovery.DefaultPath;
         ApiDiscovery.Write(apiPath, server.Port, server.Token, Version, Environment.ProcessPath);
