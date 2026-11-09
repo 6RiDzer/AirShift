@@ -57,6 +57,13 @@ changes.
     "camberMin": -15, "camberMax": 5, "trackMin": -100, "trackMax": 100,
     "reason": null
   },
+  "tune": {
+    "lowFront": 45, "lowRear": 45, "parked": 80, "lowest": 100, "highest": 15,
+    "dumpSeconds": 1.4, "fillSeconds": 2.6, "order": "together", "settle": true, "speedGuard": true,
+    "ranges": { "drop": { "min": 0, "max": 130, "step": 1 }, "lowest": { "min": 40, "max": 130, "step": 1 },
+                "highest": { "min": 0, "max": 15, "step": 1 }, "dumpSeconds": { "min": 0.3, "max": 6, "step": 0.1 },
+                "fillSeconds": { "min": 0.5, "max": 10, "step": 0.1 } }
+  },
   "guard": { "on": true, "downBelowKmh": 30, "upAboveKmh": 60 },
   "message": "Car ready."
 }
@@ -91,8 +98,24 @@ version).
 | `stance.set` | `front`, `rear` (optional numbers, -50 to 15 front, 10 rear) | stance of the current car |
 | `wheels.set` | `camberFront`, `camberRear` (degrees, or `"stock"`), `trackFront`, `trackRear` (mm) | camber and track width of the current car (0.2.0) |
 | `car.reset` | | the current car back to stock: Ride, stance 0, its own camber and track (0.2.0) |
+| `tune.set` | any of `lowFront`, `lowRear`, `parked`, `lowest`, `highest`, `dumpSeconds`, `fillSeconds` (numbers), `order` (`together`, `front-first`, `rear-first`), `settle`, `speedGuard` (booleans) | the Tune settings, as in the window's Tune tab (0.4.0) |
 | `restore` | | stock heights, camber and track now, no ramp; the car's settings are kept |
 | `app.show` | | brings the AirShift window to the front |
 
 Commands are state based: sending `preset.set low` twice leaves the car at Low. A stance sent
 while no air move runs reaches the car in 0.15 s, so a client can send it while a slider moves.
+
+## Tune (since 0.4.0)
+
+`tune` in the state is the window's Tune tab: Low air out per axle (`lowFront`, `lowRear`) and
+Parked (`parked`), in percent of stock clearance aired out; `lowest` (Mini, the lowest the car
+ever goes, in the same unit); `highest` (Maxi, the highest stance; the front never goes above
++15 % and the rear above +10 %); dump and fill times for a full stock clearance; the axle order;
+the settle after a drop; the speed guard. `ranges` gives each slider's bounds. `tune.set`
+changes only the fields it carries; out-of-range values are held at the bounds.
+
+## Starting AirShift from another app
+
+`AirShift.exe --minimized` starts it minimized to the taskbar. If AirShift is already running,
+it stays as it is (without `--minimized`, the running window comes to the front).
+

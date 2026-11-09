@@ -8,7 +8,7 @@ namespace AirShift.App;
 
 internal static class Program
 {
-    public const string Version = "0.3.1";
+    public const string Version = "0.4.0";
     private static Mutex? _single;
 
     [STAThread]
@@ -20,10 +20,12 @@ internal static class Program
             if (args[0] == "--guard") return Guard.Run(owner);
         }
 
+        // --minimized: started by another app, so stay out of the way.
+        var minimized = args.Contains("--minimized");
         _single = new Mutex(true, @"Local\AirShift.SingleInstance", out var first);
         if (!first && !args.Contains("--elevated"))
         {
-            AskRunningCopyToShow();
+            if (!minimized) AskRunningCopyToShow();
             return 0;
         }
 
@@ -57,6 +59,7 @@ internal static class Program
 
         engine.Start();
         form = new MainForm(engine, log);
+        if (minimized) form.WindowState = FormWindowState.Minimized;
         try
         {
             Application.Run(form);

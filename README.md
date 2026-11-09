@@ -12,9 +12,11 @@ check what it does. AirShift is free.
 - **Three presets**: Ride (stock or your stance), Low, Parked. Each one is a share of the car's
   own stock clearance aired out, so it means the same thing on every car. Low has its own air
   out for the front and the rear, and both Low and Parked can go past 100 % (up to 130 %).
-- **Air ride feel**: the dump valve is quick and slows as the bag empties, the compressor fills
-  at a steadier pace, axles can move together or one after the other, and a drop ends with a
-  short settle.
+- **Air ride feel**: the car body rides on the bags like a mass on a damped spring. The dump
+  valve is quick and slows as the bag empties, the compressor fills at a steadier pace, axles
+  can move together or one after the other, and a drop ends with a short, smooth settle. Nothing
+  jumps: a new command starts from where the body is and how fast it moves, and a car set down
+  on its lowest point (Mini) does not bounce.
 - **Stance per car**: front height from -50 % to +15 % and rear from -50 % to +10 % of stock
   clearance, remembered for each car. The car follows the slider while you drag it.
 - **Mini and Maxi** (Tune tab): Mini is the lowest the car can ever go, as air out (100 % by
@@ -38,7 +40,8 @@ check what it does. AirShift is free.
 - **Log**: `%LOCALAPPDATA%\AirShift\airshift.log` lists what happened, including each stance,
   camber, track and Tune change once you stop dragging.
 - **Controller** (optional): hold View and press the D-pad up, down or left for Ride, Low, Parked.
-- **Local API** so other apps on your PC can drive it. See [docs/API.md](docs/API.md).
+- **Local API** so other apps on your PC can drive it and change its Tune settings, and
+  `--minimized` to start it out of the way. See [docs/API.md](docs/API.md).
 
 ## How it works
 

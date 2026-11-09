@@ -232,7 +232,9 @@ public class WheelTests
         Assert.Equal(0.40 + 0.07 * 0.15, game.Heights()[0], 4);
 
         engine.SetStanceAsync(-20, null).Wait();
-        Run(engine, game, t, AirShiftEngine.StanceSeconds + 0.05);
+        t = Run(engine, game, t, AirShiftEngine.StanceSeconds + 0.05);
+        Assert.Equal(0.40 - 0.07 * 0.20, game.Heights()[0], 2);
+        Run(engine, game, t, 0.4);
         Assert.Equal(0.40 - 0.07 * 0.20, game.Heights()[0], 4);
         Assert.False(engine.State.Moving);
     }

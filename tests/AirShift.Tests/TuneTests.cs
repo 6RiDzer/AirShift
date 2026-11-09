@@ -135,3 +135,43 @@ public class TuneTests
         Assert.Single(log, l => l.StartsWith("Tune: Low air out front 110 %, rear 45 %"));
     }
 }
+
+public class TuneApiTests
+{
+    private static GameProfile Profile() => GameProfile.BuiltIn().Single(p => p.Id == "forza-horizon-6");
+
+    [Fact]
+    public async Task The_api_shows_and_changes_the_tune()
+    {
+        var game = new FakeGame(Profile());
+        var engine = new AirShiftEngine(Profile(), (GameProfile _, out GameStatus status, out string message) =>
+        {
+            status = GameStatus.Attached;
+            message = "ok";
+            return game;
+        }, new SettingsStore(null));
+        for (var t = 0.0; t < 1.2; t += 1.0 / 60) engine.Tick(t);
+
+        var body = System.Text.Json.Nodes.JsonNode.Parse(
+            """{ "command": "tune.set", "lowFront": 140, "lowRear": 60, "lowest": 118, "highest": 8, "dumpSeconds": 1.8, "order": "front-first", "settle": false }""")!.AsObject();
+        var result = await AirShift.Core.Api.ApiContract.Run(engine, body, null);
+        Assert.True(result.Ok, result.Message);
+        engine.Tick(1.3);
+        var tune = AirShift.Core.Api.ApiContract.State(engine.State, "0.4.0")["tune"]!;
+        Assert.Equal(130, tune["lowFront"]!.GetValue<double>());
+        Assert.Equal(60, tune["lowRear"]!.GetValue<double>());
+        Assert.Equal(118, tune["lowest"]!.GetValue<double>());
+        Assert.Equal(8, tune["highest"]!.GetValue<double>());
+        Assert.Equal(1.8, tune["dumpSeconds"]!.GetValue<double>());
+        Assert.Equal("front-first", tune["order"]!.GetValue<string>());
+        Assert.False(tune["settle"]!.GetValue<bool>());
+        Assert.Equal(130, tune["ranges"]!["drop"]!["max"]!.GetValue<double>());
+        var stance = AirShift.Core.Api.ApiContract.State(engine.State, "0.4.0")["stance"]!;
+        Assert.Equal(8, stance["frontMax"]!.GetValue<double>());
+
+        var wrong = System.Text.Json.Nodes.JsonNode.Parse("""{ "command": "tune.set", "order": "sideways" }""")!.AsObject();
+        Assert.False((await AirShift.Core.Api.ApiContract.Run(engine, wrong, null)).Ok);
+        var empty = System.Text.Json.Nodes.JsonNode.Parse("""{ "command": "tune.set" }""")!.AsObject();
+        Assert.False((await AirShift.Core.Api.ApiContract.Run(engine, empty, null)).Ok);
+    }
+}

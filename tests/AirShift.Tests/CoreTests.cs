@@ -212,7 +212,7 @@ public class CoreTests
         var low = new double[] { 0.35, 0.35, 0.35, 0.35 };
         var down = RideMotion.Plan(stock, low, stock, radii, w => w < 2, s);
         var up = RideMotion.Plan(low, stock, stock, radii, w => w < 2, s);
-        Assert.True(down.TotalSeconds - WheelMove.SettleSeconds < up.TotalSeconds);
+        Assert.True(down.TotalSeconds < up.TotalSeconds);
         s.Order = AxleOrder.FrontFirst;
         var staged = RideMotion.Plan(stock, low, stock, radii, w => w < 2, s);
         var mid = staged.At(0.3);

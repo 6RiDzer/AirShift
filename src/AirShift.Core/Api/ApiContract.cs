@@ -93,6 +93,27 @@ public static class ApiContract
             ["trackMax"] = RideSettings.TrackMax,
             ["reason"] = s.Wheels.Reason,
         },
+        ["tune"] = new JsonObject
+        {
+            ["lowFront"] = s.Tune.LowFront,
+            ["lowRear"] = s.Tune.LowRear,
+            ["parked"] = s.Tune.Parked,
+            ["lowest"] = s.Tune.Lowest,
+            ["highest"] = s.Tune.Highest,
+            ["dumpSeconds"] = Math.Round(s.Tune.DumpSeconds, 1),
+            ["fillSeconds"] = Math.Round(s.Tune.FillSeconds, 1),
+            ["order"] = OrderName(s.Tune.Order),
+            ["settle"] = s.Tune.Settle,
+            ["speedGuard"] = s.Tune.SpeedGuard,
+            ["ranges"] = new JsonObject
+            {
+                ["drop"] = Range(0, RideSettings.DropMax, 1),
+                ["lowest"] = Range(RideSettings.LowestMin, RideSettings.LowestMax, 1),
+                ["highest"] = Range(0, RideSettings.FrontStanceMax, 1),
+                ["dumpSeconds"] = Range(RideSettings.DumpMin, RideSettings.DumpMax, 0.1),
+                ["fillSeconds"] = Range(RideSettings.FillMin, RideSettings.FillMax, 0.1),
+            },
+        },
         ["guard"] = new JsonObject
         {
             ["on"] = s.GuardOn,
@@ -100,6 +121,23 @@ public static class ApiContract
             ["upAboveKmh"] = s.GuardUpKmh,
         },
         ["message"] = s.Message,
+    };
+
+    private static JsonObject Range(double min, double max, double step) => new() { ["min"] = min, ["max"] = max, ["step"] = step };
+
+    public static string OrderName(AxleOrder order) => order switch
+    {
+        AxleOrder.FrontFirst => "front-first",
+        AxleOrder.RearFirst => "rear-first",
+        _ => "together",
+    };
+
+    public static AxleOrder? ParseOrder(string? text) => text?.Trim().ToLowerInvariant() switch
+    {
+        "together" => AxleOrder.Together,
+        "front-first" or "frontfirst" => AxleOrder.FrontFirst,
+        "rear-first" or "rearfirst" => AxleOrder.RearFirst,
+        _ => null,
     };
 
     private static JsonObject Axle(bool available, double? camber, double? stock, double? live, double track) => new()
@@ -143,6 +181,24 @@ public static class ApiContract
                     : await engine.SetWheelsAsync(change, "api");
             case "car.reset":
                 return await engine.ResetCarAsync("api");
+            case "tune.set":
+                var orderText = Text(body["order"]);
+                var order = ParseOrder(orderText);
+                if (orderText is not null && order is null) return CommandResult.Refused("order must be together, front-first or rear-first.");
+                var tune = new TuneChange(
+                    LowFront: Number(body["lowFront"]),
+                    LowRear: Number(body["lowRear"]),
+                    Parked: Number(body["parked"]),
+                    Lowest: Number(body["lowest"]),
+                    Highest: Number(body["highest"]),
+                    DumpSeconds: Number(body["dumpSeconds"]),
+                    FillSeconds: Number(body["fillSeconds"]),
+                    Order: order,
+                    Settle: Flag(body["settle"]),
+                    SpeedGuard: Flag(body["speedGuard"]));
+                return tune.Empty
+                    ? CommandResult.Refused("tune.set needs at least one setting.")
+                    : await engine.ChangeTuneAsync(tune, "api");
             case "restore":
                 return await engine.RestoreAsync();
             case "app.show":
@@ -150,6 +206,30 @@ public static class ApiContract
                 return CommandResult.Done("Shown.");
             default:
                 return CommandResult.Refused("Unknown command.");
+        }
+    }
+
+    private static string? Text(JsonNode? node)
+    {
+        try
+        {
+            return node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static bool? Flag(JsonNode? node)
+    {
+        try
+        {
+            return node is JsonValue value && value.TryGetValue<bool>(out var flag) ? flag : null;
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 

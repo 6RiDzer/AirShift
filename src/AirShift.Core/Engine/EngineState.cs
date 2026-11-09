@@ -44,6 +44,9 @@ public sealed record EngineState
     public double TrackRear { get; init; }
     public WheelState Wheels { get; init; } = new() { Reason = "No car yet." };
 
+    /// <summary>The Tune settings, so the API and the window show the same values.</summary>
+    public TuneState Tune { get; init; } = TuneState.From(new RideSettings());
+
     /// <summary>Live height per axle as a share of stock clearance: 0 = stock, -50 = half the clearance gone.</summary>
     public double FrontHeightPercent { get; init; }
 
@@ -54,6 +57,54 @@ public sealed record EngineState
     public string Message { get; init; } = "Waiting for Forza Horizon 6.";
     public int Reapplied { get; init; }
     public long Revision { get; init; }
+}
+
+/// <summary>The user's Tune settings as they are now.</summary>
+public sealed record TuneState(
+    double LowFront,
+    double LowRear,
+    double Parked,
+    double Lowest,
+    double Highest,
+    double DumpSeconds,
+    double FillSeconds,
+    AxleOrder Order,
+    bool Settle,
+    bool SpeedGuard)
+{
+    public static TuneState From(RideSettings s) => new(
+        s.LowFrontPercent, s.LowRearPercent, s.ParkedDropPercent, s.LowestPercent, s.HighestPercent,
+        s.ExhaustSeconds, s.FillSeconds, s.Order, s.Settle, s.SpeedGuard);
+}
+
+/// <summary>A Tune change from the API; null fields stay as they are.</summary>
+public sealed record TuneChange(
+    double? LowFront = null,
+    double? LowRear = null,
+    double? Parked = null,
+    double? Lowest = null,
+    double? Highest = null,
+    double? DumpSeconds = null,
+    double? FillSeconds = null,
+    AxleOrder? Order = null,
+    bool? Settle = null,
+    bool? SpeedGuard = null)
+{
+    public bool Empty => this == new TuneChange();
+
+    public void ApplyTo(RideSettings s)
+    {
+        if (LowFront is { } lf) s.LowFrontPercent = lf;
+        if (LowRear is { } lr) s.LowRearPercent = lr;
+        if (Parked is { } p) s.ParkedDropPercent = p;
+        if (Lowest is { } lo) s.LowestPercent = lo;
+        if (Highest is { } hi) s.HighestPercent = hi;
+        if (DumpSeconds is { } d) s.ExhaustSeconds = d;
+        if (FillSeconds is { } f) s.FillSeconds = f;
+        if (Order is { } o) s.Order = o;
+        if (Settle is { } st) s.Settle = st;
+        if (SpeedGuard is { } g) s.SpeedGuard = g;
+    }
 }
 
 /// <summary>A camber and track change from the app or the API; null fields stay as they are.</summary>

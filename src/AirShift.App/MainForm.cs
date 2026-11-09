@@ -53,8 +53,8 @@ internal sealed class MainForm : Form
     private readonly Slider _lowest = new() { Label = "Mini: lowest the car goes (air out)", Minimum = RideSettings.LowestMin, Maximum = RideSettings.LowestMax, Mark = 100 };
     private readonly Slider _highest = new() { Label = "Maxi: highest stance (front / rear)", Minimum = 0, Maximum = RideSettings.FrontStanceMax, ValueWidth = 130 };
     private readonly Label _stanceHint = new();
-    private readonly Slider _exhaust = new() { Label = "Dump time", Minimum = 0.3, Maximum = 6, Step = 0.1 };
-    private readonly Slider _fill = new() { Label = "Fill time", Minimum = 0.5, Maximum = 10, Step = 0.1 };
+    private readonly Slider _exhaust = new() { Label = "Dump time", Minimum = RideSettings.DumpMin, Maximum = RideSettings.DumpMax, Step = 0.1 };
+    private readonly Slider _fill = new() { Label = "Fill time", Minimum = RideSettings.FillMin, Maximum = RideSettings.FillMax, Step = 0.1 };
     private readonly FlatButton _together = new() { Text = "Together", Height = 32 };
     private readonly FlatButton _frontFirst = new() { Text = "Front first", Height = 32 };
     private readonly FlatButton _rearFirst = new() { Text = "Rear first", Height = 32 };
@@ -66,6 +66,7 @@ internal sealed class MainForm : Form
     private readonly Label _log2 = new();
 
     private EngineState? _shown;
+    private TuneState? _shownTune;
     private string _report = "";
     private bool _hotkeysOk;
     private DateTime _pinnedUntil;
@@ -312,9 +313,10 @@ internal sealed class MainForm : Form
             _tunePage.Controls.Add(box);
             y += 28;
         }
-        _settle.CheckedChanged += async (_, _) => await _engine.ChangeSettingsAsync(s => s.Settle = _settle.Checked);
-        _guard.CheckedChanged += async (_, _) => await _engine.ChangeSettingsAsync(s => s.SpeedGuard = _guard.Checked);
-        _pad.CheckedChanged += async (_, _) => await _engine.ChangeSettingsAsync(s => s.ControllerEnabled = _pad.Checked);
+        // Loading values set from elsewhere (the API) must not send them back as a change.
+        _settle.CheckedChanged += async (_, _) => { if (!_loading) await _engine.ChangeSettingsAsync(s => s.Settle = _settle.Checked); };
+        _guard.CheckedChanged += async (_, _) => { if (!_loading) await _engine.ChangeSettingsAsync(s => s.SpeedGuard = _guard.Checked); };
+        _pad.CheckedChanged += async (_, _) => { if (!_loading) await _engine.ChangeSettingsAsync(s => s.ControllerEnabled = _pad.Checked); };
 
         y += 6;
         _probe.Location = new Point(20, y);
@@ -387,11 +389,15 @@ internal sealed class MainForm : Form
         _together.Selected = s.Order == AxleOrder.Together;
         _frontFirst.Selected = s.Order == AxleOrder.FrontFirst;
         _rearFirst.Selected = s.Order == AxleOrder.RearFirst;
+        _loading = true;
         _settle.Checked = s.Settle;
         _guard.Checked = s.SpeedGuard;
         _guard.Text = $"Speed guard: air down below {s.GuardDownKmh:0} km/h, back up above {s.GuardUpKmh:0} km/h";
         _pad.Checked = s.ControllerEnabled;
+        _loading = false;
     }
+
+    private bool _loading;
 
     // ---- State -> UI -----------------------------------------------------------------------------
 
@@ -406,6 +412,8 @@ internal sealed class MainForm : Form
         }
         if (ReferenceEquals(s, _shown)) return;
         _shown = s;
+        if (_shownTune is not null && s.Tune != _shownTune) LoadSettingsIntoControls(); // changed through the API
+        _shownTune = s.Tune;
 
         string status;
         Color dot;

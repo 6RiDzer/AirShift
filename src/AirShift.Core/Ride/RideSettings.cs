@@ -49,6 +49,11 @@ public sealed class RideSettings
     /// <summary>Whatever the settings, a hub never goes below this share of its wheel radius (the game's car reads wrong under half).</summary>
     public const double HubOverRadiusMin = 0.65;
 
+    public const double DumpMin = 0.3;
+    public const double DumpMax = 6;
+    public const double FillMin = 0.5;
+    public const double FillMax = 10;
+
     /// <summary>Share of the front wheels' stock clearance removed at the Low preset.</summary>
     public double LowFrontPercent { get; set; } = 45;
 
@@ -121,8 +126,8 @@ public sealed class RideSettings
         HighestPercent = Math.Clamp(Finite(HighestPercent, FrontStanceMax), 0, FrontStanceMax);
         FrontStancePercent = Math.Clamp(Finite(FrontStancePercent, 0), StanceMin, FrontStanceMax);
         RearStancePercent = Math.Clamp(Finite(RearStancePercent, 0), StanceMin, RearStanceMax);
-        ExhaustSeconds = Math.Clamp(Finite(ExhaustSeconds, 1.4), 0.3, 8);
-        FillSeconds = Math.Clamp(Finite(FillSeconds, 2.6), 0.5, 12);
+        ExhaustSeconds = Math.Clamp(Finite(ExhaustSeconds, 1.4), DumpMin, DumpMax);
+        FillSeconds = Math.Clamp(Finite(FillSeconds, 2.6), FillMin, FillMax);
         AxleDelaySeconds = Math.Clamp(Finite(AxleDelaySeconds, 0.35), 0, 2);
         GuardDownKmh = Math.Clamp(Finite(GuardDownKmh, 30), 5, 80);
         GuardUpKmh = Math.Clamp(Finite(GuardUpKmh, 60), GuardDownKmh + 5, 200);

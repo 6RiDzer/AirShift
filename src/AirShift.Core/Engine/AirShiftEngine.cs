@@ -139,7 +139,7 @@ public sealed class AirShiftEngine : IDisposable
     /// <summary>The current car back to stock: height, stance, camber and track width.</summary>
     public Task<CommandResult> ResetCarAsync(string source = "app") => Enqueue(() => ResetCar(source));
 
-    public Task<CommandResult> ChangeSettingsAsync(Action<RideSettings> change) =>
+    public Task<CommandResult> ChangeSettingsAsync(Action<RideSettings> change, string source = "app") =>
         Enqueue(() =>
         {
             change(Settings);
@@ -152,9 +152,13 @@ public sealed class AirShiftEngine : IDisposable
                 _carMemory.Rear = Math.Min(_carMemory.Rear, Settings.StanceTop(false));
             }
             if (_motion is null && _held is not null) Retarget();
-            LogLater("settings", "Tune: " + DescribeSettings(Settings) + ".");
+            LogLater("settings", "Tune: " + DescribeSettings(Settings) + $" ({source}).");
             return CommandResult.Done("Settings saved.");
         });
+
+    /// <summary>Tune settings from the API: the same as the window's Tune tab.</summary>
+    public Task<CommandResult> ChangeTuneAsync(TuneChange change, string source = "api") =>
+        ChangeSettingsAsync(change.ApplyTo, source);
 
     public static string DescribeSettings(RideSettings s) =>
         $"Low air out front {s.LowFrontPercent:0} %, rear {s.LowRearPercent:0} %, Parked {s.ParkedDropPercent:0} %, "
@@ -613,10 +617,12 @@ public sealed class AirShiftEngine : IDisposable
         if (_stock is null || _radii is null || _current is null) return;
         _level = level;
         var from = _motion is not null ? _motion.At(_now - _motionStart) : (_held ?? _current);
+        // A move that starts while another runs keeps the body's speed, so it never jolts.
+        var velocity = _motion?.VelocityAt(_now - _motionStart);
         var to = Targets(level);
         _motion = quick
-            ? RideMotion.Quick(from, to, StanceSeconds)
-            : RideMotion.Plan(from, to, _stock, _radii, _profile.Wheels.IsFront, Settings);
+            ? RideMotion.Quick(from, to, StanceSeconds, velocity)
+            : RideMotion.Plan(from, to, _stock, _radii, _profile.Wheels.IsFront, Settings, velocity);
         _motionQuick = quick;
         _motionStart = _now;
     }
@@ -747,6 +753,7 @@ public sealed class AirShiftEngine : IDisposable
             Progress = _motion is null ? 1 : Math.Round(_motion.Progress(_now - _motionStart), 3),
             FrontStance = _carMemory?.Front ?? 0,
             RearStance = _carMemory?.Rear ?? 0,
+            Tune = TuneState.From(Settings),
             FrontStanceTop = Settings.StanceTop(true),
             RearStanceTop = Settings.StanceTop(false),
             CamberFront = _carMemory?.CamberFront,
