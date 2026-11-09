@@ -16,23 +16,27 @@ public static class AirRideModel
         RideSettings settings,
         AirLevel level,
         double frontStance,
-        double rearStance,
-        double hardFloor)
+        double rearStance)
     {
-        var drop = settings.DropPercent(level);
         var result = new double[4];
         for (var w = 0; w < 4; w++)
         {
+            var front = isFront(w);
             var clearance = Clearance(stock[w], radii[w]);
-            var stance = isFront(w) ? frontStance : rearStance;
+            var stance = Math.Min(front ? frontStance : rearStance, settings.StanceTop(front));
+            var drop = settings.DropPercent(level, front);
             var value = stock[w] + clearance * stance / 100.0 - clearance * drop / 100.0;
-            result[w] = Math.Max(Floor(stock[w], radii[w], settings.FloorPercent, hardFloor), value);
+            result[w] = Math.Max(Floor(stock[w], radii[w], settings.LowestPercent), value);
         }
         return result;
     }
 
-    public static double Floor(double stock, double radius, double floorPercent, double hardFloor) =>
-        radius + Math.Max(Clearance(stock, radius) * floorPercent / 100.0, hardFloor);
+    /// <summary>
+    /// The lowest a hub may go: Mini (a share of stock clearance aired out, past 100 % the hub
+    /// sits under the wheel radius), and never under <see cref="RideSettings.HubOverRadiusMin"/> of the radius.
+    /// </summary>
+    public static double Floor(double stock, double radius, double lowestPercent) =>
+        Math.Max(radius * RideSettings.HubOverRadiusMin, stock - Clearance(stock, radius) * lowestPercent / 100.0);
 
     public static double[] Delays(Func<int, bool> isFront, RideSettings settings, bool goingDown)
     {
@@ -125,8 +129,7 @@ public sealed class RideMotion
         IReadOnlyList<double> stock,
         IReadOnlyList<double> radii,
         Func<int, bool> isFront,
-        RideSettings settings,
-        double hardFloor)
+        RideSettings settings)
     {
         var goingDown = Enumerable.Range(0, 4).Sum(w => to[w] - from[w]) < 0;
         var delays = AirRideModel.Delays(isFront, settings, goingDown);
@@ -137,7 +140,7 @@ public sealed class RideMotion
             var share = Math.Abs(to[w] - from[w]) / clearance;
             var down = to[w] < from[w];
             var duration = share * (down ? settings.ExhaustSeconds : settings.FillSeconds);
-            var floor = AirRideModel.Floor(stock[w], radii[w], settings.FloorPercent, hardFloor);
+            var floor = AirRideModel.Floor(stock[w], radii[w], settings.LowestPercent);
             wheels[w] = new WheelMove(from[w], to[w], delays[w], duration, settings.Settle, floor);
         }
         return new RideMotion(wheels);

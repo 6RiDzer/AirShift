@@ -105,16 +105,17 @@ public class CoreTests
     }
 
     [Fact]
-    public void Floor_is_never_crossed()
+    public void Mini_is_never_crossed()
     {
         var (engine, game) = Engine();
         var t = Run(engine, 0, 1.2);
-        engine.ChangeSettingsAsync(s => { s.ParkedDropPercent = 100; s.FloorPercent = 20; }).Wait();
+        engine.ChangeSettingsAsync(s => { s.ParkedDropPercent = 130; s.LowestPercent = 80; }).Wait();
         engine.SetStanceAsync(-50, -50).Wait();
         engine.SetLevelAsync(AirLevel.Parked).Wait();
         Run(engine, t, 4);
         var h = game.Heights();
-        Assert.True(h[0] >= 0.33 + 0.07 * 0.2 - 1e-4, h[0].ToString());
+        Assert.True(h[0] >= 0.40 - 0.07 * 0.8 - 1e-4, h[0].ToString());
+        Assert.Equal(0.40 - 0.07 * 0.8, h[0], 4);
     }
 
     [Fact]
@@ -209,11 +210,11 @@ public class CoreTests
         var stock = new double[] { 0.4, 0.4, 0.4, 0.4 };
         var radii = new double[] { 0.3, 0.3, 0.3, 0.3 };
         var low = new double[] { 0.35, 0.35, 0.35, 0.35 };
-        var down = RideMotion.Plan(stock, low, stock, radii, w => w < 2, s, 0.01);
-        var up = RideMotion.Plan(low, stock, stock, radii, w => w < 2, s, 0.01);
+        var down = RideMotion.Plan(stock, low, stock, radii, w => w < 2, s);
+        var up = RideMotion.Plan(low, stock, stock, radii, w => w < 2, s);
         Assert.True(down.TotalSeconds - WheelMove.SettleSeconds < up.TotalSeconds);
         s.Order = AxleOrder.FrontFirst;
-        var staged = RideMotion.Plan(stock, low, stock, radii, w => w < 2, s, 0.01);
+        var staged = RideMotion.Plan(stock, low, stock, radii, w => w < 2, s);
         var mid = staged.At(0.3);
         Assert.True(mid[0] < mid[2]);
     }

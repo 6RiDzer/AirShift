@@ -13,7 +13,7 @@ While AirShift runs it writes `%LOCALAPPDATA%\AirShift\api.json`:
   "port": 51234,
   "token": "…",
   "pid": 1234,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "exe": "C:\\Games\\AirShift\\AirShift.exe",
   "startedAt": "2026-11-09T03:00:00.0000000+00:00"
 }
@@ -27,7 +27,7 @@ Every call except `/hello` needs `Authorization: Bearer <token>`. Requests that 
 ## GET /airshift/1/hello
 
 ```json
-{ "api": "airshift/1", "app": { "name": "AirShift", "version": "0.2.0", "developer": "6RiDzer" } }
+{ "api": "airshift/1", "app": { "name": "AirShift", "version": "0.3.0", "developer": "6RiDzer" } }
 ```
 
 ## GET /airshift/1/state
@@ -38,7 +38,7 @@ changes.
 ```json
 {
   "api": "airshift/1",
-  "app": { "name": "AirShift", "version": "0.2.0", "developer": "6RiDzer" },
+  "app": { "name": "AirShift", "version": "0.3.0", "developer": "6RiDzer" },
   "revision": 42,
   "game": {
     "status": "attached",
@@ -67,7 +67,8 @@ changes.
 - `air.frontHeight` / `rearHeight`: live height per axle as a share of stock clearance
   (0 = stock, negative = lower).
 - `stance`: per axle, from `min` to `frontMax` / `rearMax` (since 0.2.0; `max` is the front's
-  top, for older readers).
+  top, for older readers). Since 0.3.0 the tops follow the user's Maxi setting, so they can be
+  lower than +15 / +10; a stance sent above them is held at the top.
 - `wheels` (since 0.2.0): camber and track width per axle. `camber` is what the user set, in
   degrees with the left wheel's sign (negative: the tops of the wheels lean in; the right
   wheel mirrors it), or `null` for the car's own `stockCamber`. `liveCamber` is what the game

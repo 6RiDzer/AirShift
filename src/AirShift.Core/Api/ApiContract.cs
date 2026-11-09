@@ -79,9 +79,9 @@ public static class ApiContract
             ["front"] = s.FrontStance,
             ["rear"] = s.RearStance,
             ["min"] = RideSettings.StanceMin,
-            ["max"] = RideSettings.FrontStanceMax,
-            ["frontMax"] = RideSettings.FrontStanceMax,
-            ["rearMax"] = RideSettings.RearStanceMax,
+            ["max"] = s.FrontStanceTop,
+            ["frontMax"] = s.FrontStanceTop,
+            ["rearMax"] = s.RearStanceTop,
         },
         ["wheels"] = new JsonObject
         {

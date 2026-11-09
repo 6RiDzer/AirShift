@@ -126,6 +126,10 @@ public sealed class FakeGame : IGameMemory
     public long ModuleSize => _module.Length;
     public string? FileVersion { get; }
     public bool HasExited { get; set; }
+    public int ProcessId { get; set; } = 4321;
+
+    /// <summary>The game's id for the car in the player's entity (another car in the same memory).</summary>
+    public void SetCarId(int id) => PutI32(Heap + 0x3000 + 0x8C, id);
     public int Writes { get; private set; }
 
     public float Speed

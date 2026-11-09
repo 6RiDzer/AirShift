@@ -10,12 +10,16 @@ check what it does. AirShift is free.
 
 - **Air down / Air up** with one key (F9) or the big button. Shift+F9 goes straight to Parked.
 - **Three presets**: Ride (stock or your stance), Low, Parked. Each one is a share of the car's
-  own stock clearance, so it means the same thing on every car.
+  own stock clearance aired out, so it means the same thing on every car. Low has its own air
+  out for the front and the rear, and both Low and Parked can go past 100 % (up to 130 %).
 - **Air ride feel**: the dump valve is quick and slows as the bag empties, the compressor fills
   at a steadier pace, axles can move together or one after the other, and a drop ends with a
   short settle.
 - **Stance per car**: front height from -50 % to +15 % and rear from -50 % to +10 % of stock
   clearance, remembered for each car. The car follows the slider while you drag it.
+- **Mini and Maxi** (Tune tab): Mini is the lowest the car can ever go, as air out (100 % by
+  default, up to 130 %); a hub never goes under two thirds of its wheel radius whatever you set.
+  Maxi caps the stance (front +15 %, rear +10 % at most).
 - **Camber and track width per car** (Wheels tab): camber per axle from -15° to +5°, and each
   axle's wheels moved out or in by up to 100 mm. AirShift turns and moves the car's own
   suspension curves, so the camber still changes with suspension travel like the stock tune,
@@ -23,10 +27,16 @@ check what it does. AirShift is free.
 - **Reset**: one button puts the car back to stock: Ride, no stance, its own camber and track.
 - **Speed guard** (on by default): air down only below 30 km/h, and the car rises back to Ride
   above 60 km/h.
-- **Floor**: the car never goes below a share of its stock clearance you choose (12 % by default).
 - **Puts everything back**: AirShift restores stock heights, camber and track when you close it,
   re-applies your settings when the game resets the car or bakes a new tune, and starts over
-  when you change car.
+  when you change car. Closing the game takes everything back to stock on its own.
+- **Even after a crash**: while anything is changed, AirShift keeps a small session journal
+  (`%LOCALAPPDATA%\AirShift\session.json`). A second, windowless AirShift process (the guard)
+  waits for the app; if the app stops without putting the car back (a crash, End task), the
+  guard checks that the same car is still there with AirShift's values, puts the stock height,
+  camber and track back, and closes. Anything the game rebuilt since is left alone.
+- **Log**: `%LOCALAPPDATA%\AirShift\airshift.log` lists what happened, including each stance,
+  camber, track and Tune change once you stop dragging.
 - **Controller** (optional): hold View and press the D-pad up, down or left for Ride, Low, Parked.
 - **Local API** so other apps on your PC can drive it. See [docs/API.md](docs/API.md).
 

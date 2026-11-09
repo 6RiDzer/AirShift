@@ -57,6 +57,51 @@ public sealed class WheelAlignment
 
     public bool Available(bool front) => front ? _front : _rear;
 
+    /// <summary>True while the car's curves have not been read yet (the game may still hold AirShift's from before).</summary>
+    public bool Pending => _pending;
+
+    /// <summary>Changes whenever a stock curve changes, so the engine knows when to write the journal again.</summary>
+    public int StockVersion { get; private set; }
+
+    /// <summary>One bit per wheel AirShift holds away from stock.</summary>
+    public int HeldMask
+    {
+        get
+        {
+            var mask = 0;
+            for (var w = 0; w < 4; w++)
+            {
+                if (_written[w] is not null && _stock[w] is not null) mask |= 1 << w;
+            }
+            return mask;
+        }
+    }
+
+    /// <summary>Changes on every write to the game, so the journal can say how far each wheel was moved once it settles.</summary>
+    public int WriteVersion { get; private set; }
+
+    /// <summary>Engine time of the last write to the game.</summary>
+    public double LastWrite { get; private set; } = double.NegativeInfinity;
+
+    /// <summary>
+    /// The stock curve of every wheel AirShift holds away from stock, for the session journal, with
+    /// how far it was turned and moved when <paramref name="settled"/> (null while it still moves).
+    /// </summary>
+    public JournalCurve[] HeldCurves(bool settled)
+    {
+        var list = new List<JournalCurve>();
+        for (var w = 0; w < 4; w++)
+        {
+            if (_written[w] is null || _stock[w] is not { } stock) continue;
+            list.Add(JournalCurve.From(w, stock) with
+            {
+                CamberDelta = settled ? _camberShift[w] : null,
+                TrackDelta = settled ? stock.Outward * _trackShift[w] : null,
+            });
+        }
+        return list.ToArray();
+    }
+
     public string? Reason => _reason;
 
     /// <summary>The axle's own camber, in the left wheel's sign.</summary>
@@ -86,6 +131,7 @@ public sealed class WheelAlignment
         _pending = false;
         _front = _rear = false;
         _dirty = false;
+        StockVersion++;
         if (_tables is not null) _reason = "No car yet.";
     }
 
@@ -133,6 +179,7 @@ public sealed class WheelAlignment
             ForgetShifts(memory);
         }
 
+        StockVersion++;
         _front = WheelTables.Independent(_stock[Index("FL")]!, _stock[Index("FR")]!);
         _rear = WheelTables.Independent(_stock[Index("RL")]!, _stock[Index("RR")]!);
         _reason = (_front, _rear) switch
@@ -159,7 +206,9 @@ public sealed class WheelAlignment
         if (_dirty && writesAllowed && now >= _nextWrite)
         {
             _nextWrite = now + WriteSeconds;
+            var before = WriteVersion;
             Apply(memory);
+            if (WriteVersion != before) LastWrite = now;
         }
     }
 
@@ -242,6 +291,7 @@ public sealed class WheelAlignment
                 continue;
             }
             _written[w] = stock ? null : target;
+            WriteVersion++;
             _camberShift[w] = stock ? 0 : camber;
             _trackShift[w] = stock ? 0 : track;
         }
@@ -266,6 +316,7 @@ public sealed class WheelAlignment
         if (_stock[w] is { } old && _stockCamber[w] is { } own)
             _stockCamber[w] = own + current.Camber.Average() - old.Camber.Average();
         _stock[w] = current;
+        StockVersion++;
     }
 
     private bool Recovered(WheelCurve[] current, CarMemory memory)

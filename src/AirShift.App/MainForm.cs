@@ -10,6 +10,7 @@ internal sealed class MainForm : Form
     private const int HotkeyToggle = 1;
     private const int HotkeyParked = 2;
     private const int WmHotkey = 0x0312;
+    private const int PageHeight = 592;
 
     private readonly AirShiftEngine _engine;
     private readonly Action<string> _log;
@@ -46,9 +47,12 @@ internal sealed class MainForm : Form
     private readonly FlatButton _allow = new() { Text = "Try AirShift on this game version", Visible = false };
     private readonly FlatButton _admin = new() { Text = "Restart as administrator", Visible = false };
 
-    private readonly Slider _lowDrop = new() { Label = "Low: air out", Minimum = 0, Maximum = 100 };
-    private readonly Slider _parkedDrop = new() { Label = "Parked: air out", Minimum = 0, Maximum = 100 };
-    private readonly Slider _floor = new() { Label = "Never below (share of stock clearance)", Minimum = 5, Maximum = 60 };
+    private readonly Slider _lowFront = new() { Label = "Low: air out front", Minimum = 0, Maximum = RideSettings.DropMax, Mark = 100, ValueWidth = 150 };
+    private readonly Slider _lowRear = new() { Label = "Low: air out rear", Minimum = 0, Maximum = RideSettings.DropMax, Mark = 100, ValueWidth = 150 };
+    private readonly Slider _parkedDrop = new() { Label = "Parked: air out", Minimum = 0, Maximum = RideSettings.DropMax, Mark = 100, ValueWidth = 150 };
+    private readonly Slider _lowest = new() { Label = "Mini: lowest the car goes (air out)", Minimum = RideSettings.LowestMin, Maximum = RideSettings.LowestMax, Mark = 100 };
+    private readonly Slider _highest = new() { Label = "Maxi: highest stance (front / rear)", Minimum = 0, Maximum = RideSettings.FrontStanceMax, ValueWidth = 130 };
+    private readonly Label _stanceHint = new();
     private readonly Slider _exhaust = new() { Label = "Dump time", Minimum = 0.3, Maximum = 6, Step = 0.1 };
     private readonly Slider _fill = new() { Label = "Fill time", Minimum = 0.5, Maximum = 10, Step = 0.1 };
     private readonly FlatButton _together = new() { Text = "Together", Height = 32 };
@@ -80,7 +84,7 @@ internal sealed class MainForm : Form
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(480, 640);
+        ClientSize = new Size(480, 108 + PageHeight);
         using (var stream = typeof(MainForm).Assembly.GetManifestResourceStream("AirShift.Icon.ico"))
         {
             if (stream is not null) Icon = new Icon(stream);
@@ -94,7 +98,8 @@ internal sealed class MainForm : Form
         LoadSettingsIntoControls();
         ResumeLayout(false);
 
-        _engine.Log += line => BeginInvokeSafe(() => AddLine(line));
+        // The engine's lines already go to the log file; here they only show.
+        _engine.Log += line => BeginInvokeSafe(() => AddLine(line, write: false));
         _ui.Tick += (_, _) => Refresh(_engine.State);
         _ui.Start();
     }
@@ -130,7 +135,7 @@ internal sealed class MainForm : Form
         foreach (var page in new[] { _ridePage, _tunePage, _wheelsPage })
         {
             page.Location = new Point(0, 108);
-            page.Size = new Size(480, 532);
+            page.Size = new Size(480, PageHeight);
             page.BackColor = Theme.Back;
             Controls.Add(page);
         }
@@ -170,14 +175,10 @@ internal sealed class MainForm : Form
         Live(_front, v => _engine.SetStanceAsync(v, null));
         Live(_rear, v => _engine.SetStanceAsync(null, v));
 
-        var stanceHint = new Label
-        {
-            Text = "Stance is saved for this car: -50 % to +15 % front, +10 % rear, of its stock clearance.",
-            Location = new Point(24, 414),
-            Size = new Size(436, 18),
-            ForeColor = Theme.Muted,
-            Font = Theme.Ui(8f),
-        };
+        _stanceHint.Location = new Point(24, 414);
+        _stanceHint.Size = new Size(436, 18);
+        _stanceHint.ForeColor = Theme.Muted;
+        _stanceHint.Font = Theme.Ui(8f);
 
         _allow.Location = new Point(20, 440);
         _allow.Size = new Size(440, 36);
@@ -189,12 +190,12 @@ internal sealed class MainForm : Form
         var keys = new Label
         {
             Text = "F9  Air up / down     Shift+F9  Parked",
-            Location = new Point(24, 488),
+            Location = new Point(24, PageHeight - 30),
             Size = new Size(436, 18),
             ForeColor = Theme.Muted,
             Font = Theme.Ui(8f),
         };
-        _ridePage.Controls.AddRange([_view, _air, _ride, _low, _parked, _reset, _message, _front, _rear, stanceHint, _allow, _admin, keys]);
+        _ridePage.Controls.AddRange([_view, _air, _ride, _low, _parked, _reset, _message, _front, _rear, _stanceHint, _allow, _admin, keys]);
     }
 
     private void BuildWheelsPage()
@@ -270,15 +271,21 @@ internal sealed class MainForm : Form
             s.Location = new Point(20, y);
             s.Size = new Size(440, 44);
             s.Format = format;
-            s.Committed += async v => Show(await _engine.ChangeSettingsAsync(st => apply(st, v)), quiet: true);
+            s.Committed += async v =>
+            {
+                Show(await _engine.ChangeSettingsAsync(st => apply(st, v)), quiet: true);
+                LoadSettingsIntoControls();
+            };
             _tunePage.Controls.Add(s);
             y += 46;
             return s;
         }
 
-        Add(_lowDrop, v => $"{v:0} %", (s, v) => s.LowDropPercent = v);
-        Add(_parkedDrop, v => $"{v:0} %", (s, v) => s.ParkedDropPercent = v);
-        Add(_floor, v => $"{v:0} %", (s, v) => s.FloorPercent = v);
+        Add(_lowFront, AirOut, (s, v) => s.LowFrontPercent = v);
+        Add(_lowRear, AirOut, (s, v) => s.LowRearPercent = v);
+        Add(_parkedDrop, AirOut, (s, v) => s.ParkedDropPercent = v);
+        Add(_lowest, v => $"{v:0} %", (s, v) => s.LowestPercent = v);
+        Add(_highest, v => $"+{Math.Min(v, RideSettings.FrontStanceMax):0} / +{Math.Min(v, RideSettings.RearStanceMax):0} %", (s, v) => s.HighestPercent = v);
         Add(_exhaust, v => $"{v:0.0} s", (s, v) => s.ExhaustSeconds = v);
         Add(_fill, v => $"{v:0.0} s", (s, v) => s.FillSeconds = v);
 
@@ -327,7 +334,7 @@ internal sealed class MainForm : Form
         };
         y += 42;
         _log2.Location = new Point(20, y);
-        _log2.Size = new Size(440, 532 - y - 24);
+        _log2.Size = new Size(440, PageHeight - y - 24);
         _log2.ForeColor = Theme.Muted;
         _log2.Font = new Font("Consolas", 8f);
         _log2.BackColor = Theme.Panel;
@@ -336,12 +343,19 @@ internal sealed class MainForm : Form
         var copyright = new Label
         {
             Text = $"AirShift {Program.Version} · © 2026 6RiDzer. All rights reserved.",
-            Location = new Point(20, 532 - 20),
+            Location = new Point(20, PageHeight - 20),
             Size = new Size(440, 18),
             ForeColor = Theme.Muted,
             Font = Theme.Ui(7.5f),
         };
         _tunePage.Controls.AddRange([_probe, _copy, _log2, copyright]);
+    }
+
+    /// <summary>An air out value, and where Mini stops it when it asks for more.</summary>
+    private string AirOut(double value)
+    {
+        var lowest = _engine.Settings.LowestPercent;
+        return value > lowest + 0.5 ? $"{value:0} % (Mini stops at {lowest:0})" : $"{value:0} %";
     }
 
     private void ShowPage(Panel page)
@@ -357,9 +371,17 @@ internal sealed class MainForm : Form
     private void LoadSettingsIntoControls()
     {
         var s = _engine.Settings;
-        _lowDrop.Value = s.LowDropPercent;
+        _lowFront.Value = s.LowFrontPercent;
+        _lowRear.Value = s.LowRearPercent;
         _parkedDrop.Value = s.ParkedDropPercent;
-        _floor.Value = s.FloorPercent;
+        _lowest.Value = s.LowestPercent;
+        _highest.Value = s.HighestPercent;
+        foreach (var slider in new[] { _lowFront, _lowRear, _parkedDrop }) slider.Invalidate();
+        _front.Maximum = s.StanceTop(true);
+        _rear.Maximum = s.StanceTop(false);
+        _front.Invalidate();
+        _rear.Invalidate();
+        _stanceHint.Text = $"Stance is saved for this car: -50 % to +{s.StanceTop(true):0} % front, +{s.StanceTop(false):0} % rear (Maxi, in Tune).";
         _exhaust.Value = s.ExhaustSeconds;
         _fill.Value = s.FillSeconds;
         _together.Selected = s.Order == AxleOrder.Together;
@@ -444,12 +466,12 @@ internal sealed class MainForm : Form
         _pinnedUntil = DateTime.UtcNow.AddSeconds(4);
     }
 
-    private void AddLine(string line)
+    private void AddLine(string line, bool write = true)
     {
         _lines.Add($"{DateTime.Now:HH:mm:ss}  {line}");
         while (_lines.Count > 200) _lines.RemoveAt(0);
         if (_report.Length == 0) _log2.Text = string.Join(Environment.NewLine, _lines.TakeLast(14));
-        _log(line);
+        if (write) _log(line);
     }
 
     private void PollController()

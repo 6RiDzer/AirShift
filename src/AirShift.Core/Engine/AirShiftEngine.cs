@@ -24,6 +24,8 @@ public sealed class AirShiftEngine : IDisposable
     private readonly GameProfile _profile;
     private readonly GameOpener _opener;
     private readonly SettingsStore _store;
+    private readonly IJournalStore? _journalStore;
+    private readonly Dictionary<string, (string Line, double At)> _quietLog = new();
     private readonly ConcurrentQueue<Action> _commands = new();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly object _stateLock = new();
@@ -56,14 +58,27 @@ public sealed class AirShiftEngine : IDisposable
     private double _nextSave = double.MaxValue;
     private long _revision;
     private EngineState _state = new();
+    private SessionJournal? _journal;
+    private (long Car, bool Heights, double[]? Stock, double[]? Held, int Mask, int Version, bool Pending, int Writes) _journalKey;
+    private double _motionEnded = double.NegativeInfinity;
 
-    public AirShiftEngine(GameProfile profile, GameOpener opener, SettingsStore store)
+    /// <summary>A change counts as settled (and the journal says exactly where it stopped) once nothing moved for this long.</summary>
+    public const double SettleSeconds = 0.5;
+
+    /// <summary>Changes a user makes by dragging are written to the log once they stop for this long.</summary>
+    public const double QuietLogSeconds = 1.0;
+
+    public AirShiftEngine(GameProfile profile, GameOpener opener, SettingsStore store, IJournalStore? journal = null)
     {
         _profile = profile;
         _opener = opener;
         _store = store;
+        _journalStore = journal;
         Settings = store.Load();
     }
+
+    /// <summary>What AirShift may have left changed in the game right now (null when nothing).</summary>
+    public SessionJournal? Journal => _journal;
 
     public RideSettings Settings { get; }
 
@@ -130,9 +145,22 @@ public sealed class AirShiftEngine : IDisposable
             change(Settings);
             Settings.Clamp();
             ScheduleSave();
+            if (_carMemory is not null)
+            {
+                // Maxi may have come down under the car's stance.
+                _carMemory.Front = Math.Min(_carMemory.Front, Settings.StanceTop(true));
+                _carMemory.Rear = Math.Min(_carMemory.Rear, Settings.StanceTop(false));
+            }
             if (_motion is null && _held is not null) Retarget();
+            LogLater("settings", "Tune: " + DescribeSettings(Settings) + ".");
             return CommandResult.Done("Settings saved.");
         });
+
+    public static string DescribeSettings(RideSettings s) =>
+        $"Low air out front {s.LowFrontPercent:0} %, rear {s.LowRearPercent:0} %, Parked {s.ParkedDropPercent:0} %, "
+        + $"Mini {s.LowestPercent:0} %, Maxi +{s.HighestPercent:0} %, dump {s.ExhaustSeconds:0.0} s, fill {s.FillSeconds:0.0} s, "
+        + $"{s.Order switch { AxleOrder.FrontFirst => "front first", AxleOrder.RearFirst => "rear first", _ => "together" }}, "
+        + $"settle {(s.Settle ? "on" : "off")}, speed guard {(s.SpeedGuard ? "on" : "off")}";
 
     public Task<CommandResult> AllowThisBuildAsync() =>
         Enqueue(() =>
@@ -188,7 +216,13 @@ public sealed class AirShiftEngine : IDisposable
 
         if (_memory is null || _memory.HasExited)
         {
-            if (_memory is not null) Detach("Forza Horizon 6 closed.");
+            if (_memory is not null)
+            {
+                // The game is gone and everything AirShift changed went with it.
+                ClearJournal();
+                Detach("Forza Horizon 6 closed.");
+            }
+            FlushLog(now);
             if (now >= _nextAttach)
             {
                 _nextAttach = now + 1.5;
@@ -244,7 +278,68 @@ public sealed class AirShiftEngine : IDisposable
             _nextSave = double.MaxValue;
             _store.Save(Settings);
         }
+        UpdateJournal();
+        FlushLog(now);
         Publish();
+    }
+
+    // ---- Session journal and quiet log ---------------------------------------------------------
+
+    /// <summary>
+    /// Keeps the journal on disk in step with what AirShift holds on the current car. While no car
+    /// is in view the game may still hold AirShift's values, so the journal stays as it was.
+    /// </summary>
+    private void UpdateJournal()
+    {
+        if (_memory is null || _car is null || _radii is null) return;
+        var heights = _stock is not null && (_held is not null || _motion is not null);
+        var heightsSettled = heights && _motion is null && _now - _motionEnded >= SettleSeconds;
+        var wheelsSettled = _wheels is null || _now - _wheels.LastWrite >= SettleSeconds;
+        var key = (_car.Car, heights, heights ? _stock : null, heightsSettled ? _held : null, _wheels?.HeldMask ?? 0,
+            _wheels?.StockVersion ?? 0, _wheels?.Pending ?? false, wheelsSettled ? _wheels?.WriteVersion ?? 0 : -1);
+        if (key == _journalKey) return;
+        _journalKey = key;
+
+        var wheels = _wheels is { Pending: true } && _journal is { } old && old.Car == _car.Car && old.Entity == _car.Entity
+            ? old.Wheels
+            : _wheels?.HeldCurves(wheelsSettled) ?? [];
+        var next = new SessionJournal
+        {
+            AirShiftProcess = Environment.ProcessId,
+            GameProcess = _memory.ProcessId,
+            GameVersion = _memory.FileVersion,
+            Entity = _car.Entity,
+            Car = _car.Car,
+            CarId = _car.CarId,
+            Radii = _radii.ToArray(),
+            StockHeights = heights ? _stock!.ToArray() : null,
+            HeldHeights = heightsSettled ? _held!.ToArray() : null,
+            Wheels = wheels,
+        };
+        if (next.SameAs(_journal)) return;
+        _journal = next.Empty ? null : next;
+        _journalStore?.Save(_journal);
+    }
+
+    private void ClearJournal()
+    {
+        _journalKey = default;
+        if (_journal is null) return;
+        _journal = null;
+        _journalStore?.Save(null);
+    }
+
+    private void LogLater(string key, string line) => _quietLog[key] = (line, _now + QuietLogSeconds);
+
+    private void FlushLog(double now)
+    {
+        if (_quietLog.Count == 0) return;
+        foreach (var (key, entry) in _quietLog.ToArray())
+        {
+            if (entry.At > now) continue;
+            _quietLog.Remove(key);
+            Log?.Invoke(entry.Line);
+        }
     }
 
     private double _now;
@@ -392,6 +487,7 @@ public sealed class AirShiftEngine : IDisposable
             {
                 _motion = null;
                 _motionQuick = false;
+                _motionEnded = now;
                 _held = Targets(_level);
                 if (Near(_held, _stock!, 0.0002))
                 {
@@ -437,14 +533,14 @@ public sealed class AirShiftEngine : IDisposable
     {
         if (_carMemory is null) return CommandResult.Refused("No car yet. Drive out into the world first.");
         if (!WritesAllowed(out var reason)) return CommandResult.Refused(reason!);
-        if (front is { } f) _carMemory.Front = f;
-        if (rear is { } r) _carMemory.Rear = r;
+        if (front is { } f) _carMemory.Front = Math.Min(f, Settings.StanceTop(true));
+        if (rear is { } r) _carMemory.Rear = Math.Min(r, Settings.StanceTop(false));
         _carMemory.Clamp();
         ScheduleSave();
         // A drag sends many stances: follow it quickly, unless an air move is on its way.
         Plan(_level, quick: _motion is null || _motionQuick);
         _message = $"Stance front {_carMemory.Front:+0;-0;0} %, rear {_carMemory.Rear:+0;-0;0} %.";
-        _ = source;
+        LogLater("stance", $"Stance: front {_carMemory.Front:+0;-0;0} %, rear {_carMemory.Rear:+0;-0;0} % ({source}).");
         Publish();
         return CommandResult.Done(_message);
     }
@@ -468,7 +564,8 @@ public sealed class AirShiftEngine : IDisposable
         ScheduleSave();
         _message = "Camber " + Degrees(_carMemory.CamberFront, _wheels.StockCamber(true)) + " / " + Degrees(_carMemory.CamberRear, _wheels.StockCamber(false))
                    + $", track {_carMemory.TrackFront:+0;-0;0} / {_carMemory.TrackRear:+0;-0;0} mm.";
-        _ = source;
+        LogLater("wheels", $"Wheels: camber front {Degrees(_carMemory.CamberFront, _wheels.StockCamber(true))}, rear {Degrees(_carMemory.CamberRear, _wheels.StockCamber(false))}; "
+                           + $"track front {_carMemory.TrackFront:+0;-0;0} mm, rear {_carMemory.TrackRear:+0;-0;0} mm ({source}).");
         Publish();
         return CommandResult.Done(_message);
     }
@@ -519,14 +616,14 @@ public sealed class AirShiftEngine : IDisposable
         var to = Targets(level);
         _motion = quick
             ? RideMotion.Quick(from, to, StanceSeconds)
-            : RideMotion.Plan(from, to, _stock, _radii, _profile.Wheels.IsFront, Settings, _profile.Limits.HardFloor);
+            : RideMotion.Plan(from, to, _stock, _radii, _profile.Wheels.IsFront, Settings);
         _motionQuick = quick;
         _motionStart = _now;
     }
 
     private double[] Targets(AirLevel level) => AirRideModel.Targets(
         _stock!, _radii!, _profile.Wheels.IsFront, Settings, level,
-        _carMemory?.Front ?? 0, _carMemory?.Rear ?? 0, _profile.Limits.HardFloor);
+        _carMemory?.Front ?? 0, _carMemory?.Rear ?? 0);
 
     private bool Write(IReadOnlyList<double> values)
     {
@@ -556,9 +653,12 @@ public sealed class AirShiftEngine : IDisposable
     /// <summary>Lifts the car back to stock and stops the engine. Called when the app closes.</summary>
     public void Shutdown()
     {
+        if (_shutDown) return;
+        _shutDown = true;
         _running = false;
         _thread?.Join(1000);
         DrainCommands();
+        FlushLog(double.MaxValue);
         try
         {
             if (_car is not null && _stock is not null && _held is not null && _memory is { HasExited: false })
@@ -566,7 +666,7 @@ public sealed class AirShiftEngine : IDisposable
                 // A short fill so the car does not pop up.
                 var from = _held;
                 var motion = RideMotion.Plan(from, _stock, _stock, _radii!, _profile.Wheels.IsFront,
-                    new RideSettings { FillSeconds = 0.8, ExhaustSeconds = 0.8, Settle = false }, _profile.Limits.HardFloor);
+                    new RideSettings { FillSeconds = 0.8, ExhaustSeconds = 0.8, Settle = false });
                 var clock = Stopwatch.StartNew();
                 while (!motion.Done(clock.Elapsed.TotalSeconds) && clock.Elapsed.TotalSeconds < 1.5)
                 {
@@ -577,17 +677,49 @@ public sealed class AirShiftEngine : IDisposable
                 if (_carMemory is not null) _carMemory.LastWritten = null;
                 Log?.Invoke("Stock heights restored on exit.");
             }
+            _held = null;
+            _motion = null;
+            _level = AirLevel.Ride;
             if (_memory is { HasExited: false } && _wheels?.State.Held == true)
             {
                 _wheels.Restore(_carMemory);
                 Log?.Invoke("Stock camber and track width restored on exit.");
             }
+            FinishJournal();
         }
         finally
         {
             _store.Save(Settings);
             _memory?.Dispose();
             _memory = null;
+        }
+    }
+
+    private bool _shutDown;
+
+    /// <summary>
+    /// On exit: the journal now says what is still changed in the game. With the car in view that
+    /// is nothing; with the car out of view (a menu) AirShift tries the journal's own rescue, and
+    /// leaves the rest on disk for the guard process to finish once the car can be read.
+    /// </summary>
+    private void FinishJournal()
+    {
+        UpdateJournal();
+        if (_journal is null || _memory is null || _memory.HasExited || !WritesAllowed(out _))
+        {
+            ClearJournal();
+            return;
+        }
+        var result = SessionRescue.Run(_memory, _profile, _journal, Thread.Sleep);
+        Log?.Invoke("On exit: " + result.Message);
+        if (result.Retry)
+        {
+            _journal = result.Remaining;
+            _journalStore?.Save(_journal);
+        }
+        else
+        {
+            ClearJournal();
         }
     }
 
@@ -615,6 +747,8 @@ public sealed class AirShiftEngine : IDisposable
             Progress = _motion is null ? 1 : Math.Round(_motion.Progress(_now - _motionStart), 3),
             FrontStance = _carMemory?.Front ?? 0,
             RearStance = _carMemory?.Rear ?? 0,
+            FrontStanceTop = Settings.StanceTop(true),
+            RearStanceTop = Settings.StanceTop(false),
             CamberFront = _carMemory?.CamberFront,
             CamberRear = _carMemory?.CamberRear,
             TrackFront = _carMemory?.TrackFront ?? 0,

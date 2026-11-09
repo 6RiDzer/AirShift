@@ -38,14 +38,44 @@ public sealed class RideSettings
 
     public static double StanceMax(bool front) => front ? FrontStanceMax : RearStanceMax;
 
-    /// <summary>Share of each wheel's stock clearance removed at the Low preset.</summary>
-    public double LowDropPercent { get; set; } = 45;
+    /// <summary>Highest air out a preset can ask for, as a share of stock clearance (above 100 % the hub goes below the wheel radius).</summary>
+    public const double DropMax = 130;
+
+    /// <summary>The lowest the car can go, whatever the preset and stance, as a share of stock clearance aired out.</summary>
+    public const double LowestMin = 40;
+
+    public const double LowestMax = 130;
+
+    /// <summary>Whatever the settings, a hub never goes below this share of its wheel radius (the game's car reads wrong under half).</summary>
+    public const double HubOverRadiusMin = 0.65;
+
+    /// <summary>Share of the front wheels' stock clearance removed at the Low preset.</summary>
+    public double LowFrontPercent { get; set; } = 45;
+
+    /// <summary>Share of the rear wheels' stock clearance removed at the Low preset.</summary>
+    public double LowRearPercent { get; set; } = 45;
+
+    /// <summary>Settings from AirShift 0.2.0 and earlier had one Low air out for both axles.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? LowDropPercent
+    {
+        get => null;
+        set
+        {
+            if (value is not { } v) return;
+            LowFrontPercent = v;
+            LowRearPercent = v;
+        }
+    }
 
     /// <summary>Share of each wheel's stock clearance removed at the Parked preset.</summary>
     public double ParkedDropPercent { get; set; } = 80;
 
-    /// <summary>Share of stock clearance that is always kept, whatever the preset and stance.</summary>
-    public double FloorPercent { get; set; } = 12;
+    /// <summary>Mini: the lowest any preset and stance can take the car, as a share of stock clearance aired out.</summary>
+    public double LowestPercent { get; set; } = 100;
+
+    /// <summary>Maxi: the highest stance, in percent of stock clearance, under each axle's own top.</summary>
+    public double HighestPercent { get; set; } = FrontStanceMax;
 
     /// <summary>Static ride height per axle, as a share of stock clearance (-50 to +15 front, +10 rear).</summary>
     public double FrontStancePercent { get; set; }
@@ -84,9 +114,11 @@ public sealed class RideSettings
 
     public void Clamp()
     {
-        LowDropPercent = Math.Clamp(Finite(LowDropPercent, 45), 0, 100);
-        ParkedDropPercent = Math.Clamp(Finite(ParkedDropPercent, 80), 0, 100);
-        FloorPercent = Math.Clamp(Finite(FloorPercent, 12), 5, 60);
+        LowFrontPercent = Math.Clamp(Finite(LowFrontPercent, 45), 0, DropMax);
+        LowRearPercent = Math.Clamp(Finite(LowRearPercent, 45), 0, DropMax);
+        ParkedDropPercent = Math.Clamp(Finite(ParkedDropPercent, 80), 0, DropMax);
+        LowestPercent = Math.Clamp(Finite(LowestPercent, 100), LowestMin, LowestMax);
+        HighestPercent = Math.Clamp(Finite(HighestPercent, FrontStanceMax), 0, FrontStanceMax);
         FrontStancePercent = Math.Clamp(Finite(FrontStancePercent, 0), StanceMin, FrontStanceMax);
         RearStancePercent = Math.Clamp(Finite(RearStancePercent, 0), StanceMin, RearStanceMax);
         ExhaustSeconds = Math.Clamp(Finite(ExhaustSeconds, 1.4), 0.3, 8);
@@ -99,12 +131,15 @@ public sealed class RideSettings
 
     private static double Finite(double value, double fallback) => double.IsFinite(value) ? value : fallback;
 
-    public double DropPercent(AirLevel level) => level switch
+    public double DropPercent(AirLevel level, bool front) => level switch
     {
-        AirLevel.Low => LowDropPercent,
+        AirLevel.Low => front ? LowFrontPercent : LowRearPercent,
         AirLevel.Parked => ParkedDropPercent,
         _ => 0,
     };
+
+    /// <summary>The highest stance an axle can take now: Maxi, under the axle's own top.</summary>
+    public double StanceTop(bool front) => Math.Min(HighestPercent, StanceMax(front));
 }
 
 public sealed class CarMemory

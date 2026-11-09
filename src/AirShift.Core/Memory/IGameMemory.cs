@@ -9,6 +9,9 @@ public interface IGameMemory : IDisposable
     long ModuleSize { get; }
     string? FileVersion { get; }
     bool HasExited { get; }
+
+    /// <summary>The game's process id, so a journal is only used on the game process it was written for.</summary>
+    int ProcessId => 0;
     bool Read(long address, Span<byte> buffer);
     bool Write(long address, ReadOnlySpan<byte> buffer);
 }

@@ -8,12 +8,18 @@ namespace AirShift.App;
 
 internal static class Program
 {
-    public const string Version = "0.2.0";
+    public const string Version = "0.3.0";
     private static Mutex? _single;
 
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Length == 2 && int.TryParse(args[1], out var owner))
+        {
+            if (args[0] == "--start-guard") return Guard.Start(owner);
+            if (args[0] == "--guard") return Guard.Run(owner);
+        }
+
         _single = new Mutex(true, @"Local\AirShift.SingleInstance", out var first);
         if (!first && !args.Contains("--elevated"))
         {
@@ -21,26 +27,27 @@ internal static class Program
             return 0;
         }
 
-        ApplicationConfiguration.Initialize();
         var folder = ApiDiscovery.DefaultFolder;
         Directory.CreateDirectory(folder);
-        var logPath = Path.Combine(folder, "airshift.log");
-        void Log(string line)
-        {
-            try
-            {
-                if (File.Exists(logPath) && new FileInfo(logPath).Length > 1_000_000) File.Delete(logPath);
-                File.AppendAllText(logPath, $"{DateTimeOffset.Now:O} {line}{Environment.NewLine}");
-            }
-            catch (Exception)
-            {
-            }
-        }
+        var log = LogFile.Writer(folder);
+        // The guard of a session that stopped may still be putting a car back: let it finish.
+        Guard.WaitForRescue();
+        var journal = new JournalFile(Guard.JournalPath(folder));
+        journal.Save(null);
+
+        ApplicationConfiguration.Initialize();
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) => log("Window error: " + e.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => log("AirShift crashed: " + e.ExceptionObject);
 
         var profiles = GameProfile.Load(Path.Combine(folder, "profiles"));
         var profile = profiles.First(p => p.Id == "forza-horizon-6");
-        using var engine = new AirShiftEngine(profile, Win32GameMemory.Open, new SettingsStore(Path.Combine(folder, "settings.json")));
-        Log($"AirShift {Version} starting, profile {profile.Id} r{profile.Revision}.");
+        using var engine = new AirShiftEngine(profile, Win32GameMemory.Open, new SettingsStore(Path.Combine(folder, "settings.json")), journal);
+        log($"AirShift {Version} starting, profile {profile.Id} r{profile.Revision}.");
+        log("Tune: " + AirShiftEngine.DescribeSettings(engine.Settings) + ".");
+        // Straight to the file, so what the engine says while closing is kept too.
+        engine.Log += log;
+        Guard.Launch(log);
 
         MainForm? form = null;
         using var server = new ApiServer(engine, Version, () => form?.BeginInvoke(() => form.BringToFront2()));
@@ -49,7 +56,7 @@ internal static class Program
         ApiDiscovery.Write(apiPath, server.Port, server.Token, Version, Environment.ProcessPath);
 
         engine.Start();
-        form = new MainForm(engine, Log);
+        form = new MainForm(engine, log);
         try
         {
             Application.Run(form);
@@ -58,7 +65,7 @@ internal static class Program
         {
             engine.Shutdown();
             ApiDiscovery.Remove(apiPath);
-            Log("AirShift closed.");
+            log("AirShift closed.");
         }
         return 0;
     }

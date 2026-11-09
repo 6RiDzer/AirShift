@@ -28,6 +28,11 @@ public sealed record EngineState
     public double FrontStance { get; init; }
     public double RearStance { get; init; }
 
+    /// <summary>The highest stance per axle now: Maxi, under the axle's own top.</summary>
+    public double FrontStanceTop { get; init; } = RideSettings.FrontStanceMax;
+
+    public double RearStanceTop { get; init; } = RideSettings.RearStanceMax;
+
     /// <summary>Camber per axle the user set (left wheel's sign); null is the car's own.</summary>
     public double? CamberFront { get; init; }
 

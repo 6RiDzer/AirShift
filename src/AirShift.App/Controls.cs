@@ -130,6 +130,9 @@ internal sealed class Slider : Control
     public double Step { get; set; } = 1;
     public Func<double, string> Format { get; set; } = v => v.ToString("0");
 
+    /// <summary>Width of the value text on the right of the label.</summary>
+    public int ValueWidth { get; set; } = 90;
+
     /// <summary>Value at which a small tick is drawn (stock, for instance).</summary>
     public double? Mark { get; set; }
 
@@ -191,9 +194,9 @@ internal sealed class Slider : Control
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(Parent?.BackColor ?? Theme.Back);
         var labelHeight = Math.Max(20, Height - 24);
-        TextRenderer.DrawText(g, Label, Font, new Rectangle(4, 2, Width - 90, labelHeight), Enabled ? Theme.Text : Theme.Muted, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+        TextRenderer.DrawText(g, Label, Font, new Rectangle(4, 2, Width - ValueWidth, labelHeight), Enabled ? Theme.Text : Theme.Muted, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
         using var bold = Theme.Ui(9f, FontStyle.Bold);
-        TextRenderer.DrawText(g, Format(_value), bold, new Rectangle(Width - 94, 2, 90, labelHeight), Enabled ? Theme.Accent : Theme.Muted, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+        TextRenderer.DrawText(g, Format(_value), bold, new Rectangle(Width - ValueWidth - 4, 2, ValueWidth, labelHeight), Enabled ? Theme.Accent : Theme.Muted, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
 
         var track = Track;
         using (var back = new SolidBrush(Theme.Line)) g.FillRectangle(back, track);

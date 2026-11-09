@@ -18,9 +18,10 @@ internal sealed class Win32GameMemory : IGameMemory
 
     private nint _handle;
 
-    private Win32GameMemory(nint handle, long moduleBase, long moduleSize, string? fileVersion)
+    private Win32GameMemory(nint handle, int processId, long moduleBase, long moduleSize, string? fileVersion)
     {
         _handle = handle;
+        ProcessId = processId;
         ModuleBase = moduleBase;
         ModuleSize = moduleSize;
         FileVersion = fileVersion;
@@ -29,6 +30,7 @@ internal sealed class Win32GameMemory : IGameMemory
     public long ModuleBase { get; }
     public long ModuleSize { get; }
     public string? FileVersion { get; }
+    public int ProcessId { get; }
 
     public bool HasExited => _handle == 0 || !GetExitCodeProcess(_handle, out var code) || code != StillActive;
 
@@ -77,7 +79,7 @@ internal sealed class Win32GameMemory : IGameMemory
                 }
                 status = GameStatus.Attached;
                 message = "Attached.";
-                return new Win32GameMemory(handle, module.BaseAddress, module.ModuleMemorySize, version);
+                return new Win32GameMemory(handle, process.Id, module.BaseAddress, module.ModuleMemorySize, version);
             }
             finally
             {
