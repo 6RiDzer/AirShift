@@ -14,7 +14,7 @@ public class CoreTests
 {
     private static GameProfile Profile() => GameProfile.BuiltIn().Single(p => p.Id == "forza-horizon-6");
 
-    private static (AirShiftEngine engine, FakeGame game) Engine(string? version = "1.440.853.0", RideSettings? settings = null)
+    private static (AirShiftEngine engine, FakeGame game) Engine(string? version = "6.483.970.0", RideSettings? settings = null)
     {
         var game = new FakeGame(Profile(), version);
         var engine = new AirShiftEngine(Profile(), (GameProfile _, out GameStatus status, out string message) =>
@@ -53,7 +53,7 @@ public class CoreTests
         Assert.Equal(0x7740, p.EntityToCar.Value);
         Assert.Equal(0xAC0, p.Wheels.Stride.Value);
         Assert.Equal(3, p.Chain.Length);
-        Assert.True(p.MatchesBuild("1.440.853.0"));
+        Assert.True(p.MatchesBuild("6.483.970.0"));
         Assert.False(p.MatchesBuild("1.441.100.0"));
         Assert.True(p.Wheels.IsFront(0) && p.Wheels.IsFront(1) && !p.Wheels.IsFront(2) && !p.Wheels.IsFront(3));
     }

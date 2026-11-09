@@ -43,7 +43,7 @@ changes.
   "game": {
     "status": "attached",
     "title": "Forza Horizon 6",
-    "fileVersion": "1.440.853.0",
+    "fileVersion": "6.483.970.0",
     "buildKnown": true,
     "writesAllowed": true,
     "blockedReason": null

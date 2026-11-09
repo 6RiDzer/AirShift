@@ -1,15 +1,15 @@
 {
   "id": "forza-horizon-6",
   "title": "Forza Horizon 6",
-  "revision": 1,
+  "revision": 2,
   "processNames": [ "forzahorizon6" ],
-  "knownBuilds": [ "440.853" ],
+  "knownBuilds": [ "483.970" ],
   "context": {
     "signature": "06 E8 ? ? ? ? 90 48 8D 4D C0 E8 ? ? ? ? 48 8B 15 ? ? ? ? 48 8B 82 A8 07 00 00",
     "instructionOffset": 16,
     "displacementOffset": 3,
     "instructionLength": 7,
-    "fallbackRva": "0xA8CFEB8"
+    "fallbackRva": "0xA9330E8"
   },
   "chain": [ "0x1D0", "0x128", "0x370" ],
   "entityList": {

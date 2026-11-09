@@ -18,7 +18,7 @@ public sealed class FakeGame : IGameMemory
     private readonly byte[] _heap = new byte[0x4_0000];
     private readonly GameProfile _profile;
 
-    public FakeGame(GameProfile profile, string? version = "1.440.853.0", bool withSignature = true)
+    public FakeGame(GameProfile profile, string? version = "6.483.970.0", bool withSignature = true)
     {
         _profile = profile;
         FileVersion = version;
