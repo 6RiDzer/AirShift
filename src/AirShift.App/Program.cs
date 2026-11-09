@@ -8,7 +8,7 @@ namespace AirShift.App;
 
 internal static class Program
 {
-    public const string Version = "0.4.2";
+    public const string Version = "0.4.3";
     private static Mutex? _single;
 
     [STAThread]
