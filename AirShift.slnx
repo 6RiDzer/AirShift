@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AirShift.App/AirShift.App.csproj" />
+    <Project Path="src/AirShift.Core/AirShift.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AirShift.Tests/AirShift.Tests.csproj" />
+  </Folder>
+</Solution>
