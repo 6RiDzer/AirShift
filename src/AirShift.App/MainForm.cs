@@ -10,6 +10,10 @@ internal sealed class MainForm : Form
     private const int HotkeyToggle = 1;
     private const int HotkeyParked = 2;
     private const int WmHotkey = 0x0312;
+    private const int WmClose = 0x0010;
+
+    /// <summary>The window was asked to close (its X, Alt+F4 or app.quit).</summary>
+    public bool CloseRequested { get; private set; }
     private const int PageHeight = 640;
 
     private readonly AirShiftEngine _engine;
@@ -555,7 +559,21 @@ internal sealed class MainForm : Form
             if (id == HotkeyToggle) _ = _engine.ToggleAsync("hotkey");
             if (id == HotkeyParked) _ = _engine.SetLevelAsync(AirLevel.Parked, "hotkey");
         }
-        base.WndProc(ref m);
+        if (m.Msg != WmClose)
+        {
+            base.WndProc(ref m);
+            return;
+        }
+        CloseRequested = true;
+        try
+        {
+            base.WndProc(ref m);
+        }
+        catch (Exception exception)
+        {
+            // Closing needs parts of AirShift that may no longer load (its file changed while it ran): end anyway.
+            Program.ExitNow($"Closing failed ({exception.GetType().Name}).");
+        }
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)

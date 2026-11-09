@@ -8,8 +8,15 @@ namespace AirShift.App;
 
 internal static class Program
 {
-    public const string Version = "0.4.3";
+    public const string Version = "0.4.4";
     private static Mutex? _single;
+    private static AirShiftEngine? _engine;
+    private static Action<string>? _log;
+    private static string? _apiPath;
+    private static int _exiting;
+
+    /// <summary>After a quit request, AirShift ends by itself if its window has not closed within this time.</summary>
+    private static readonly TimeSpan QuitDeadline = TimeSpan.FromSeconds(10);
 
     [STAThread]
     private static int Main(string[] args)
@@ -39,7 +46,13 @@ internal static class Program
 
         ApplicationConfiguration.Initialize();
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-        Application.ThreadException += (_, e) => log("Window error: " + e.Exception);
+        MainForm? form = null;
+        Application.ThreadException += (_, e) =>
+        {
+            log("Window error: " + e.Exception);
+            // A window that fails while closing would otherwise stay open and could not be closed again.
+            if (form?.CloseRequested == true) ExitNow($"Closing failed ({e.Exception.GetType().Name}).");
+        };
         AppDomain.CurrentDomain.UnhandledException += (_, e) => log("AirShift crashed: " + e.ExceptionObject);
 
         var profiles = GameProfile.Load(Path.Combine(folder, "profiles"));
@@ -50,12 +63,14 @@ internal static class Program
         // Straight to the file, so what the engine says while closing is kept too.
         engine.Log += log;
         Guard.Launch(log);
+        _engine = engine;
+        _log = log;
 
-        MainForm? form = null;
         using var server = new ApiServer(engine, Version, () => form?.BeginInvoke(() => form.BringToFront2()),
-            quit: () => form?.BeginInvoke(() => form.Close()));
+            quit: Quit);
         server.Start();
         var apiPath = ApiDiscovery.DefaultPath;
+        _apiPath = apiPath;
         ApiDiscovery.Write(apiPath, server.Port, server.Token, Version, Environment.ProcessPath);
 
         engine.Start();
@@ -72,6 +87,49 @@ internal static class Program
             log("AirShift closed.");
         }
         return 0;
+
+        // app.quit: close as if the window were closed, and end anyway if that does not happen in time.
+        void Quit()
+        {
+            form?.BeginInvoke(() => form.Close());
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(QuitDeadline).ConfigureAwait(false);
+                ExitNow($"The window did not close within {QuitDeadline.TotalSeconds:0} s of app.quit.");
+            });
+        }
+    }
+
+    /// <summary>
+    /// The way out when closing the window fails: the car goes back to stock (the guard process does it too if this
+    /// cannot), the API file goes, and the process ends, so AirShift can never be left open and impossible to close.
+    /// </summary>
+    public static void ExitNow(string reason)
+    {
+        if (Interlocked.Exchange(ref _exiting, 1) == 1) return;
+        try
+        {
+            _log?.Invoke(reason + " AirShift puts the car back and stops.");
+        }
+        catch (Exception)
+        {
+        }
+        try
+        {
+            _engine?.Shutdown();
+        }
+        catch (Exception)
+        {
+        }
+        try
+        {
+            if (_apiPath is not null) ApiDiscovery.Remove(_apiPath);
+            _log?.Invoke("AirShift closed.");
+        }
+        catch (Exception)
+        {
+        }
+        Environment.Exit(0);
     }
 
     public static void ReleaseSingleInstance()
