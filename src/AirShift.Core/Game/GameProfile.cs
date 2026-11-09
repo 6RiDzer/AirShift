@@ -25,6 +25,10 @@ public sealed class GameProfile
     public CarLayout Car { get; set; } = new();
     public WheelLayout Wheels { get; set; } = new();
     public CarIdentityLayout? CarIdentity { get; set; }
+
+    /// <summary>Where each axle keeps its camber and track width; null when the profile has none.</summary>
+    public KinematicsLayout? Kinematics { get; set; }
+
     public ProfileLimits Limits { get; set; } = new();
 
     public static readonly JsonSerializerOptions JsonOptions = new()
@@ -95,6 +99,16 @@ public sealed class GameProfile
         if (Wheels.Stride.Value <= 0) throw new InvalidDataException("Wheel stride must be positive.");
         if (Chain.Length == 0) throw new InvalidDataException("Pointer chain is empty.");
         _ = Signature.Parse(Context.Signature);
+        if (Kinematics is { } k)
+        {
+            if (Wheels.LiveCamber is null) throw new InvalidDataException("Kinematics need the wheels' liveCamber field.");
+            if (k.EntryCount is < 2 or > 256 || k.EntrySize is < 16 or > 4096)
+                throw new InvalidDataException("Kinematics table size is out of range.");
+            foreach (var field in new long[] { k.Camber, k.TrackX, k.TrackXCopy?.Value ?? 0 })
+            {
+                if (field < 0 || field + 8 > k.EntrySize) throw new InvalidDataException("A kinematics field lies outside its entry.");
+            }
+        }
     }
 }
 
@@ -128,12 +142,50 @@ public sealed class WheelLayout
     public HexValue HubHeight { get; set; }
     public HexValue Radius { get; set; }
 
+    /// <summary>The camber the physics uses now: sine and cosine of half the angle, two floats.</summary>
+    public HexValue? LiveCamber { get; set; }
+
     public long Address(long car, int wheel, HexValue field) => car + Base.Value + wheel * Stride.Value + field.Value;
 
     /// <summary>Index in the game's order of the wheel with this name (FL, FR, RL, RR).</summary>
     public int IndexOf(string name) => Array.FindIndex(Order, o => string.Equals(o, name, StringComparison.OrdinalIgnoreCase));
 
     public bool IsFront(int wheel) => Order[wheel].StartsWith('F');
+
+    /// <summary>FL and RL: the left wheel of its axle.</summary>
+    public bool IsLeft(int wheel) => Order[wheel].EndsWith('L');
+}
+
+/// <summary>
+/// Each axle's suspension kinematics table: one curve per wheel of camber and lateral position
+/// over the suspension's travel, which the game bakes from the car's tune. A wheel block points
+/// to its axle, the axle to the table; the left wheel's curve and the right wheel's curve sit in
+/// two regions of that table.
+/// </summary>
+public sealed class KinematicsLayout
+{
+    public HexValue WheelToAxle { get; set; }
+    public HexValue AxleToTable { get; set; }
+    public HexValue LeftRegion { get; set; }
+    public HexValue RightRegion { get; set; }
+    public int EntrySize { get; set; } = 112;
+    public int EntryCount { get; set; } = 30;
+
+    /// <summary>Camber in each entry: sine and cosine of half the angle, two floats.</summary>
+    public HexValue Camber { get; set; }
+
+    /// <summary>The wheel's lateral position in each entry, in metres from the car's centre line.</summary>
+    public HexValue TrackX { get; set; }
+
+    /// <summary>A second copy of the lateral position the game keeps in each entry.</summary>
+    public HexValue? TrackXCopy { get; set; }
+
+    /// <summary>A wheel sits this far from the centre line at least, and at most the next value.</summary>
+    public double TrackAbsMin { get; set; } = 0.2;
+
+    public double TrackAbsMax { get; set; } = 1.8;
+
+    public double CamberAbsMax { get; set; } = 30;
 }
 
 public sealed class CarIdentityLayout

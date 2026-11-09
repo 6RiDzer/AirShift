@@ -273,6 +273,15 @@ public sealed class CarLocator
             {
                 sb.AppendLine($"  {_profile.Wheels.Order[w]}: hub height {car.HubHeights[w]:0.0000} m, radius {car.Radii[w]:0.0000} m, clearance {car.HubHeights[w] - car.Radii[w]:0.0000} m");
             }
+            if (_profile.Kinematics is not null)
+            {
+                sb.AppendLine("Camber and track (kinematics tables):");
+                new WheelTables(_memory, _profile).Describe(car.Car, sb);
+            }
+            else
+            {
+                sb.AppendLine("Camber and track: not in this profile.");
+            }
         }
         sb.AppendLine("Nothing was written.");
         return sb.ToString();

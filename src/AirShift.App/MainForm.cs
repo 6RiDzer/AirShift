@@ -21,16 +21,28 @@ internal sealed class MainForm : Form
     private readonly Panel _statusDot = new();
     private readonly FlatButton _tabRide = new() { Text = "Ride" };
     private readonly FlatButton _tabTune = new() { Text = "Tune" };
+    private readonly FlatButton _tabWheels = new() { Text = "Wheels" };
     private readonly Panel _ridePage = new();
     private readonly Panel _tunePage = new();
+    private readonly Panel _wheelsPage = new();
     private readonly RideView _view = new();
     private readonly FlatButton _air = new() { Primary = true, Height = 60 };
     private readonly FlatButton _ride = new() { Text = "Ride" };
     private readonly FlatButton _low = new() { Text = "Low" };
     private readonly FlatButton _parked = new() { Text = "Parked" };
+    private readonly FlatButton _reset = new() { Text = "Reset" };
     private readonly Label _message = new();
-    private readonly Slider _front = new() { Label = "Front stance", Minimum = RideSettings.StanceMin, Maximum = RideSettings.StanceMax, Mark = 0 };
-    private readonly Slider _rear = new() { Label = "Rear stance", Minimum = RideSettings.StanceMin, Maximum = RideSettings.StanceMax, Mark = 0 };
+    private readonly Slider _front = new() { Label = "Front stance", Minimum = RideSettings.StanceMin, Maximum = RideSettings.FrontStanceMax, Mark = 0 };
+    private readonly Slider _rear = new() { Label = "Rear stance", Minimum = RideSettings.StanceMin, Maximum = RideSettings.RearStanceMax, Mark = 0 };
+
+    private readonly Label _wheelsStatus = new();
+    private readonly Slider _camberFront = new() { Label = "Front camber", Minimum = RideSettings.CamberMin, Maximum = RideSettings.CamberMax, Step = 0.1 };
+    private readonly Slider _camberRear = new() { Label = "Rear camber", Minimum = RideSettings.CamberMin, Maximum = RideSettings.CamberMax, Step = 0.1 };
+    private readonly Slider _trackFront = new() { Label = "Front track width", Minimum = RideSettings.TrackMin, Maximum = RideSettings.TrackMax, Mark = 0 };
+    private readonly Slider _trackRear = new() { Label = "Rear track width", Minimum = RideSettings.TrackMin, Maximum = RideSettings.TrackMax, Mark = 0 };
+    private readonly Label _wheelsLive = new();
+    private readonly FlatButton _wheelsStock = new() { Text = "Stock camber and track", Height = 34 };
+    private readonly Dictionary<Slider, DateTime> _sent = new();
     private readonly FlatButton _allow = new() { Text = "Try AirShift on this game version", Visible = false };
     private readonly FlatButton _admin = new() { Text = "Restart as administrator", Visible = false };
 
@@ -77,7 +89,8 @@ internal sealed class MainForm : Form
         BuildHeader();
         BuildRidePage();
         BuildTunePage();
-        ShowPage(ride: true);
+        BuildWheelsPage();
+        ShowPage(_ridePage);
         LoadSettingsIntoControls();
         ResumeLayout(false);
 
@@ -107,17 +120,20 @@ internal sealed class MainForm : Form
         _tabRide.Size = new Size(70, 30);
         _tabTune.Location = new Point(96, 68);
         _tabTune.Size = new Size(70, 30);
-        _tabRide.Click += (_, _) => ShowPage(ride: true);
-        _tabTune.Click += (_, _) => ShowPage(ride: false);
-        Controls.AddRange([logo, title, by, _statusDot, _status, _tabRide, _tabTune]);
+        _tabWheels.Location = new Point(172, 68);
+        _tabWheels.Size = new Size(80, 30);
+        _tabRide.Click += (_, _) => ShowPage(_ridePage);
+        _tabTune.Click += (_, _) => ShowPage(_tunePage);
+        _tabWheels.Click += (_, _) => ShowPage(_wheelsPage);
+        Controls.AddRange([logo, title, by, _statusDot, _status, _tabRide, _tabTune, _tabWheels]);
 
-        _ridePage.Location = new Point(0, 108);
-        _ridePage.Size = new Size(480, 532);
-        _tunePage.Location = _ridePage.Location;
-        _tunePage.Size = _ridePage.Size;
-        _ridePage.BackColor = _tunePage.BackColor = Theme.Back;
-        Controls.Add(_ridePage);
-        Controls.Add(_tunePage);
+        foreach (var page in new[] { _ridePage, _tunePage, _wheelsPage })
+        {
+            page.Location = new Point(0, 108);
+            page.Size = new Size(480, 532);
+            page.BackColor = Theme.Back;
+            Controls.Add(page);
+        }
     }
 
     private void BuildRidePage()
@@ -128,14 +144,18 @@ internal sealed class MainForm : Form
         _air.Size = new Size(440, 60);
         _air.Click += async (_, _) => Show(await _engine.ToggleAsync());
 
-        var w = (440 - 16) / 3;
+        const int resetWidth = 86;
+        var w = (440 - resetWidth - 24) / 3;
         _ride.Location = new Point(20, 232);
         _low.Location = new Point(20 + w + 8, 232);
         _parked.Location = new Point(20 + 2 * (w + 8), 232);
         foreach (var b in new[] { _ride, _low, _parked }) b.Size = new Size(w, 40);
+        _reset.Location = new Point(460 - resetWidth, 232);
+        _reset.Size = new Size(resetWidth, 40);
         _ride.Click += async (_, _) => Show(await _engine.SetLevelAsync(AirLevel.Ride));
         _low.Click += async (_, _) => Show(await _engine.SetLevelAsync(AirLevel.Low));
         _parked.Click += async (_, _) => Show(await _engine.SetLevelAsync(AirLevel.Parked));
+        _reset.Click += async (_, _) => Show(await _engine.ResetCarAsync());
 
         _message.Location = new Point(20, 280);
         _message.Size = new Size(440, 40);
@@ -146,12 +166,13 @@ internal sealed class MainForm : Form
         _rear.Location = new Point(20, 368);
         _rear.Size = new Size(440, 44);
         _front.Format = _rear.Format = v => Math.Abs(v) < 0.5 ? "stock" : $"{v:+0;-0} %";
-        _front.Committed += async v => Show(await _engine.SetStanceAsync(v, null));
-        _rear.Committed += async v => Show(await _engine.SetStanceAsync(null, v));
+        // The car follows the slider while it moves; the release always sends the last value.
+        Live(_front, v => _engine.SetStanceAsync(v, null));
+        Live(_rear, v => _engine.SetStanceAsync(null, v));
 
         var stanceHint = new Label
         {
-            Text = "Stance is saved for this car. -50 % to +20 % of its stock clearance.",
+            Text = "Stance is saved for this car: -50 % to +15 % front, +10 % rear, of its stock clearance.",
             Location = new Point(24, 414),
             Size = new Size(436, 18),
             ForeColor = Theme.Muted,
@@ -173,7 +194,72 @@ internal sealed class MainForm : Form
             ForeColor = Theme.Muted,
             Font = Theme.Ui(8f),
         };
-        _ridePage.Controls.AddRange([_view, _air, _ride, _low, _parked, _message, _front, _rear, stanceHint, _allow, _admin, keys]);
+        _ridePage.Controls.AddRange([_view, _air, _ride, _low, _parked, _reset, _message, _front, _rear, stanceHint, _allow, _admin, keys]);
+    }
+
+    private void BuildWheelsPage()
+    {
+        var title = new Label { Text = "Camber and track width", Font = Theme.Ui(11f, FontStyle.Bold), ForeColor = Theme.Text, Location = new Point(22, 0), AutoSize = true };
+        _wheelsStatus.Location = new Point(22, 26);
+        _wheelsStatus.Size = new Size(438, 36);
+        _wheelsStatus.ForeColor = Theme.Muted;
+        _wheelsStatus.Font = Theme.Ui(8.5f);
+
+        var y = 70;
+        foreach (var slider in new[] { _camberFront, _camberRear, _trackFront, _trackRear })
+        {
+            slider.Location = new Point(20, y);
+            slider.Size = new Size(440, 44);
+            y += slider == _camberRear ? 58 : 48;
+        }
+        _camberFront.Format = v => CamberText(v, _shown?.Wheels.StockCamberFront);
+        _camberRear.Format = v => CamberText(v, _shown?.Wheels.StockCamberRear);
+        _trackFront.Format = _trackRear.Format = v => Math.Abs(v) < 0.5 ? "stock" : $"{v:+0;-0} mm";
+        Live(_camberFront, v => _engine.SetWheelsAsync(new WheelChange(CamberFront: v)));
+        Live(_camberRear, v => _engine.SetWheelsAsync(new WheelChange(CamberRear: v)));
+        Live(_trackFront, v => _engine.SetWheelsAsync(new WheelChange(TrackFront: v)));
+        Live(_trackRear, v => _engine.SetWheelsAsync(new WheelChange(TrackRear: v)));
+
+        _wheelsLive.Location = new Point(22, y);
+        _wheelsLive.Size = new Size(438, 18);
+        _wheelsLive.ForeColor = Theme.Muted;
+        _wheelsLive.Font = Theme.Ui(8.5f);
+        y += 28;
+        _wheelsStock.Location = new Point(20, y);
+        _wheelsStock.Size = new Size(440, 34);
+        _wheelsStock.Click += async (_, _) => Show(await _engine.SetWheelsAsync(
+            new WheelChange(TrackFront: 0, TrackRear: 0, StockCamberFront: true, StockCamberRear: true)));
+        y += 46;
+        var hint = new Label
+        {
+            Text = "Negative camber tilts the tops of the wheels in. Track width moves both wheels of an axle out (+) or in (-). "
+                   + "Saved for this car, put back to stock when AirShift closes. Run Probe (Tune) first on a new game version.",
+            Location = new Point(22, y),
+            Size = new Size(438, 54),
+            ForeColor = Theme.Muted,
+            Font = Theme.Ui(8f),
+        };
+        _wheelsPage.Controls.AddRange([title, _wheelsStatus, _camberFront, _camberRear, _trackFront, _trackRear, _wheelsLive, _wheelsStock, hint]);
+    }
+
+    private static string CamberText(double value, double? stock) =>
+        stock is { } s && Math.Abs(value - s) < 0.05 ? $"{value:0.0}° stock" : $"{value:+0.0;-0.0;0.0}°";
+
+    /// <summary>Sends a slider's value while it drags (at most every 60 ms) and always on release.</summary>
+    private void Live(Slider slider, Func<double, Task<CommandResult>> send)
+    {
+        slider.Changed += v =>
+        {
+            var now = DateTime.UtcNow;
+            if (_sent.TryGetValue(slider, out var last) && (now - last).TotalMilliseconds < 60) return;
+            _sent[slider] = now;
+            _ = send(v);
+        };
+        slider.Committed += async v =>
+        {
+            _sent.Remove(slider);
+            Show(await send(v), quiet: true);
+        };
     }
 
     private void BuildTunePage()
@@ -258,12 +344,14 @@ internal sealed class MainForm : Form
         _tunePage.Controls.AddRange([_probe, _copy, _log2, copyright]);
     }
 
-    private void ShowPage(bool ride)
+    private void ShowPage(Panel page)
     {
-        _ridePage.Visible = ride;
-        _tunePage.Visible = !ride;
-        _tabRide.Selected = ride;
-        _tabTune.Selected = !ride;
+        _ridePage.Visible = page == _ridePage;
+        _tunePage.Visible = page == _tunePage;
+        _wheelsPage.Visible = page == _wheelsPage;
+        _tabRide.Selected = page == _ridePage;
+        _tabTune.Selected = page == _tunePage;
+        _tabWheels.Selected = page == _wheelsPage;
     }
 
     private void LoadSettingsIntoControls()
@@ -308,7 +396,8 @@ internal sealed class MainForm : Form
         _statusDot.BackColor = dot;
 
         var ready = s.CarReady && s.WritesAllowed;
-        _air.Enabled = _ride.Enabled = _low.Enabled = _parked.Enabled = _front.Enabled = _rear.Enabled = ready;
+        _air.Enabled = _ride.Enabled = _low.Enabled = _parked.Enabled = _reset.Enabled = _front.Enabled = _rear.Enabled = ready;
+        RefreshWheels(s, ready);
         _air.Text = s.Level == AirLevel.Ride ? "Air down" : "Air up";
         _air.Hint = s.Moving ? (s.Level == AirLevel.Ride ? "Filling…" : "Dumping…") : "F9";
         _ride.Selected = s.Level == AirLevel.Ride;
@@ -321,6 +410,29 @@ internal sealed class MainForm : Form
         var caption = !s.CarReady ? "No car" : s.Moving ? (s.Level == AirLevel.Ride ? "Filling" : "Dumping") : EngineName(s.Level);
         _view.Show(s.FrontHeightPercent, s.RearHeightPercent, s.CarReady && s.Level != AirLevel.Ride, caption);
     }
+
+    private void RefreshWheels(EngineState s, bool ready)
+    {
+        var w = s.Wheels;
+        _camberFront.Enabled = _trackFront.Enabled = ready && w.Front;
+        _camberRear.Enabled = _trackRear.Enabled = ready && w.Rear;
+        _wheelsStock.Enabled = ready && (w.Front || w.Rear);
+        _camberFront.Mark = w.StockCamberFront;
+        _camberRear.Mark = w.StockCamberRear;
+        _camberFront.Value = s.CamberFront ?? w.StockCamberFront ?? 0;
+        _camberRear.Value = s.CamberRear ?? w.StockCamberRear ?? 0;
+        _trackFront.Value = s.TrackFront;
+        _trackRear.Value = s.TrackRear;
+        _wheelsStatus.Text = !s.CarReady ? "Get in a car first."
+            : !s.WritesAllowed ? s.WritesBlockedReason ?? "AirShift is read-only on this game version."
+            : w.Reason ?? "Ready. Experimental: check the car in game after each change.";
+        _wheelsStatus.ForeColor = s.CarReady && s.WritesAllowed && w.Reason is null ? Theme.Muted : Theme.Warn;
+        _wheelsLive.Text = w.LiveCamberFront is null && w.LiveCamberRear is null ? ""
+            : $"In game now: front {Signed(w.LiveCamberFront)}, rear {Signed(w.LiveCamberRear)}";
+        foreach (var slider in new[] { _camberFront, _camberRear }) slider.Invalidate();
+    }
+
+    private static string Signed(double? degrees) => degrees is { } d ? $"{d:+0.0;-0.0;0.0}°" : "—";
 
     private static string EngineName(AirLevel level) => AirShiftEngine.Name(level);
 

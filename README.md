@@ -14,13 +14,19 @@ check what it does. AirShift is free.
 - **Air ride feel**: the dump valve is quick and slows as the bag empties, the compressor fills
   at a steadier pace, axles can move together or one after the other, and a drop ends with a
   short settle.
-- **Stance per car**: front and rear height from -50 % to +20 % of stock clearance, remembered
-  for each car.
+- **Stance per car**: front height from -50 % to +15 % and rear from -50 % to +10 % of stock
+  clearance, remembered for each car. The car follows the slider while you drag it.
+- **Camber and track width per car** (Wheels tab): camber per axle from -15° to +5°, and each
+  axle's wheels moved out or in by up to 100 mm. AirShift turns and moves the car's own
+  suspension curves, so the camber still changes with suspension travel like the stock tune,
+  and stock comes back exactly. Solid axles are left alone.
+- **Reset**: one button puts the car back to stock: Ride, no stance, its own camber and track.
 - **Speed guard** (on by default): air down only below 30 km/h, and the car rises back to Ride
   above 60 km/h.
 - **Floor**: the car never goes below a share of its stock clearance you choose (12 % by default).
-- **Puts everything back**: AirShift restores stock heights when you close it, re-applies your
-  height when the game resets the car, and starts over when you change car.
+- **Puts everything back**: AirShift restores stock heights, camber and track when you close it,
+  re-applies your settings when the game resets the car or bakes a new tune, and starts over
+  when you change car.
 - **Controller** (optional): hold View and press the D-pad up, down or left for Ride, Low, Parked.
 - **Local API** so other apps on your PC can drive it. See [docs/API.md](docs/API.md).
 
@@ -28,15 +34,16 @@ check what it does. AirShift is free.
 
 AirShift runs next to the game. It finds the player's car in the game's memory, reads the four
 wheel hub heights the physics aims for, and writes new targets; the game's own suspension moves
-the car there. Where those values live is described in a game profile
+the car there. For camber and track width it reads each axle's suspension kinematics table (the
+curves the game bakes from the car's tune) and writes them back turned and moved. Where those values live is described in a game profile
 ([profiles/forza-horizon-6.json](profiles/forza-horizon-6.json)), so a game update needs a new
 profile rather than a new app.
 
 Before it writes anything, AirShift checks every value it reads: the pointer chain has to lead to
 a car whose speed, engine speed, wheel radii and hub heights are all in a sane range. If the game
 version is not one the profile lists, AirShift stays read-only until you choose
-**Try AirShift on this game version**. **Probe (read only)** in the Tune tab shows every step and
-writes nothing.
+**Try AirShift on this game version**. **Probe (read only)** in the Tune tab shows every step,
+including each wheel's kinematics table, and writes nothing.
 
 ## Requirements
 

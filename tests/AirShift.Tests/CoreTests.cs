@@ -187,7 +187,7 @@ public class CoreTests
         Assert.Equal(0.42 + 0.08 * 0.1, game.Heights()[2], 3);
         Assert.Equal(-20, engine.Settings.Cars["car:4242"].Front);
         engine.SetStanceAsync(99, null).Wait();
-        Assert.Equal(20, engine.Settings.Cars["car:4242"].Front);
+        Assert.Equal(15, engine.Settings.Cars["car:4242"].Front);
     }
 
     [Fact]
@@ -252,6 +252,28 @@ public class CoreTests
         var reply = JsonNode.Parse(await post.Content.ReadAsStringAsync())!;
         Assert.True(reply["ok"]!.GetValue<bool>(), reply.ToJsonString());
         Assert.Equal("parked", reply["state"]!["air"]!["level"]!.GetValue<string>());
+        Assert.Equal(15, reply["state"]!["stance"]!["frontMax"]!.GetValue<double>());
+        Assert.Equal(10, reply["state"]!["stance"]!["rearMax"]!.GetValue<double>());
+        Assert.True(reply["state"]!["wheels"]!["front"]!["available"]!.GetValue<bool>());
+
+        var wheels = await http.PostAsync("/airshift/1/command",
+            new StringContent("{\"command\":\"wheels.set\",\"camberFront\":-6,\"trackRear\":20}", Encoding.UTF8, "application/json"));
+        var wheelsReply = JsonNode.Parse(await wheels.Content.ReadAsStringAsync())!;
+        Assert.True(wheelsReply["ok"]!.GetValue<bool>(), wheelsReply.ToJsonString());
+        Assert.Equal(-6, wheelsReply["state"]!["wheels"]!["front"]!["camber"]!.GetValue<double>());
+        Assert.Equal(20, wheelsReply["state"]!["wheels"]!["rear"]!["track"]!.GetValue<double>());
+        var stockCamber = await http.PostAsync("/airshift/1/command",
+            new StringContent("{\"command\":\"wheels.set\",\"camberFront\":\"stock\"}", Encoding.UTF8, "application/json"));
+        var stockReply = JsonNode.Parse(await stockCamber.Content.ReadAsStringAsync())!;
+        Assert.Null(stockReply["state"]!["wheels"]!["front"]!["camber"]);
+
+        var reset = await http.PostAsync("/airshift/1/command",
+            new StringContent("{\"command\":\"car.reset\"}", Encoding.UTF8, "application/json"));
+        var resetReply = JsonNode.Parse(await reset.Content.ReadAsStringAsync())!;
+        Assert.True(resetReply["ok"]!.GetValue<bool>(), resetReply.ToJsonString());
+        Assert.Equal("ride", resetReply["state"]!["air"]!["level"]!.GetValue<string>());
+        Assert.Equal(0, resetReply["state"]!["wheels"]!["rear"]!["track"]!.GetValue<double>());
+
         var bad = await http.PostAsync("/airshift/1/command", new StringContent("{\"command\":\"nope\"}"));
         Assert.Equal(409, (int)bad.StatusCode);
         cts.Cancel();

@@ -115,6 +115,10 @@ public sealed class RideMotion
 
     public double Progress(double elapsed) => TotalSeconds <= 0 ? 1 : Math.Clamp(elapsed / TotalSeconds, 0, 1);
 
+    /// <summary>Every wheel straight to its target in <paramref name="seconds"/>, no axle delay and no settle.</summary>
+    public static RideMotion Quick(IReadOnlyList<double> from, IReadOnlyList<double> to, double seconds) =>
+        new(Enumerable.Range(0, 4).Select(w => new WheelMove(from[w], to[w], 0, seconds, settle: false, floor: 0)).ToArray());
+
     public static RideMotion Plan(
         IReadOnlyList<double> from,
         IReadOnlyList<double> to,

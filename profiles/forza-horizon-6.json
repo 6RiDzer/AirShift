@@ -1,7 +1,7 @@
 {
   "id": "forza-horizon-6",
   "title": "Forza Horizon 6",
-  "revision": 2,
+  "revision": 3,
   "processNames": [ "forzahorizon6" ],
   "knownBuilds": [ "483.970" ],
   "context": {
@@ -27,7 +27,19 @@
     "stride": "0xAC0",
     "order": [ "FL", "FR", "RR", "RL" ],
     "hubHeight": "0x2E0",
-    "radius": "0x234"
+    "radius": "0x234",
+    "liveCamber": "0x120"
+  },
+  "kinematics": {
+    "wheelToAxle": "0x408",
+    "axleToTable": "0x30",
+    "leftRegion": "0x20",
+    "rightRegion": "0xD40",
+    "entrySize": 112,
+    "entryCount": 30,
+    "camber": "0x18",
+    "trackX": "0x0",
+    "trackXCopy": "0x50"
   },
   "carIdentity": {
     "entityToRecord": "0x2F0",

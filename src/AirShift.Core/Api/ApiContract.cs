@@ -79,7 +79,19 @@ public static class ApiContract
             ["front"] = s.FrontStance,
             ["rear"] = s.RearStance,
             ["min"] = RideSettings.StanceMin,
-            ["max"] = RideSettings.StanceMax,
+            ["max"] = RideSettings.FrontStanceMax,
+            ["frontMax"] = RideSettings.FrontStanceMax,
+            ["rearMax"] = RideSettings.RearStanceMax,
+        },
+        ["wheels"] = new JsonObject
+        {
+            ["front"] = Axle(s.Wheels.Front, s.CamberFront, s.Wheels.StockCamberFront, s.Wheels.LiveCamberFront, s.TrackFront),
+            ["rear"] = Axle(s.Wheels.Rear, s.CamberRear, s.Wheels.StockCamberRear, s.Wheels.LiveCamberRear, s.TrackRear),
+            ["camberMin"] = RideSettings.CamberMin,
+            ["camberMax"] = RideSettings.CamberMax,
+            ["trackMin"] = RideSettings.TrackMin,
+            ["trackMax"] = RideSettings.TrackMax,
+            ["reason"] = s.Wheels.Reason,
         },
         ["guard"] = new JsonObject
         {
@@ -88,6 +100,15 @@ public static class ApiContract
             ["upAboveKmh"] = s.GuardUpKmh,
         },
         ["message"] = s.Message,
+    };
+
+    private static JsonObject Axle(bool available, double? camber, double? stock, double? live, double track) => new()
+    {
+        ["available"] = available,
+        ["camber"] = camber is { } c ? Math.Round(c, 1) : null,
+        ["stockCamber"] = stock,
+        ["liveCamber"] = live,
+        ["track"] = Math.Round(track, 0),
     };
 
     /// <summary>Runs one command from the API on the engine.</summary>
@@ -109,6 +130,19 @@ public static class ApiContract
                     : await engine.SetLevelAsync(level.Value, "api");
             case "stance.set":
                 return await engine.SetStanceAsync(Number(body["front"]), Number(body["rear"]), "api");
+            case "wheels.set":
+                var change = new WheelChange(
+                    CamberFront: Number(body["camberFront"]),
+                    CamberRear: Number(body["camberRear"]),
+                    TrackFront: Number(body["trackFront"]),
+                    TrackRear: Number(body["trackRear"]),
+                    StockCamberFront: IsStock(body["camberFront"]),
+                    StockCamberRear: IsStock(body["camberRear"]));
+                return change == default
+                    ? CommandResult.Refused("wheels.set needs camberFront, camberRear, trackFront or trackRear.")
+                    : await engine.SetWheelsAsync(change, "api");
+            case "car.reset":
+                return await engine.ResetCarAsync("api");
             case "restore":
                 return await engine.RestoreAsync();
             case "app.show":
@@ -116,6 +150,19 @@ public static class ApiContract
                 return CommandResult.Done("Shown.");
             default:
                 return CommandResult.Refused("Unknown command.");
+        }
+    }
+
+    private static bool IsStock(JsonNode? node)
+    {
+        try
+        {
+            return node is JsonValue value && value.TryGetValue<string>(out var text)
+                   && string.Equals(text.Trim(), "stock", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 

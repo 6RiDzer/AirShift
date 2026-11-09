@@ -18,6 +18,9 @@ public sealed class AirShiftEngine : IDisposable
 {
     private const double Tolerance = 0.0015;
 
+    /// <summary>A stance change while no air move runs reaches the car this fast, so a slider drag looks live.</summary>
+    public const double StanceSeconds = 0.15;
+
     private readonly GameProfile _profile;
     private readonly GameOpener _opener;
     private readonly SettingsStore _store;
@@ -29,6 +32,7 @@ public sealed class AirShiftEngine : IDisposable
 
     private IGameMemory? _memory;
     private CarLocator? _locator;
+    private WheelAlignment? _wheels;
     private GameStatus _game = GameStatus.NotRunning;
     private string _message = "Waiting for Forza Horizon 6.";
     private double _nextAttach;
@@ -44,6 +48,7 @@ public sealed class AirShiftEngine : IDisposable
     private double[]? _foreign;
     private int _foreignTicks;
     private RideMotion? _motion;
+    private bool _motionQuick;
     private double _motionStart;
     private AirLevel _level = AirLevel.Ride;
     private double _speedKmh;
@@ -111,6 +116,13 @@ public sealed class AirShiftEngine : IDisposable
 
     public Task<CommandResult> SetStanceAsync(double? front, double? rear, string source = "app") =>
         Enqueue(() => SetStance(front, rear, source));
+
+    /// <summary>Camber (degrees, absolute, null leaves it) and track width (mm) per axle; <see cref="WheelChange.StockCamberFront"/> and the rear one give the car's own camber back.</summary>
+    public Task<CommandResult> SetWheelsAsync(WheelChange change, string source = "app") =>
+        Enqueue(() => SetWheels(change, source));
+
+    /// <summary>The current car back to stock: height, stance, camber and track width.</summary>
+    public Task<CommandResult> ResetCarAsync(string source = "app") => Enqueue(() => ResetCar(source));
 
     public Task<CommandResult> ChangeSettingsAsync(Action<RideSettings> change) =>
         Enqueue(() =>
@@ -225,6 +237,7 @@ public sealed class AirShiftEngine : IDisposable
 
         Guard();
         Move(now);
+        if (_carMemory is not null) _wheels?.Tick(now, WritesAllowed(out _), _carMemory);
 
         if (now >= _nextSave)
         {
@@ -244,6 +257,7 @@ public sealed class AirShiftEngine : IDisposable
         if (memory is null) return;
         _memory = memory;
         _locator = new CarLocator(memory, _profile);
+        _wheels = new WheelAlignment(memory, _profile, line => Log?.Invoke(line));
         _game = GameStatus.Attached;
         _message = "Looking for your car.";
         Log?.Invoke($"Attached to {_profile.Title} (file version {memory.FileVersion ?? "unknown"}).");
@@ -255,6 +269,7 @@ public sealed class AirShiftEngine : IDisposable
         _memory?.Dispose();
         _memory = null;
         _locator = null;
+        _wheels = null;
         _game = GameStatus.NotRunning;
         _message = message;
         Publish();
@@ -274,6 +289,7 @@ public sealed class AirShiftEngine : IDisposable
         _foreign = null;
         _foreignTicks = 0;
         _level = AirLevel.Ride;
+        _wheels?.Clear();
         _message = message;
     }
 
@@ -310,6 +326,7 @@ public sealed class AirShiftEngine : IDisposable
         {
             memory.LastWritten = null;
         }
+        _wheels?.Capture(reading.Car, memory);
         ScheduleSave();
     }
 
@@ -374,6 +391,7 @@ public sealed class AirShiftEngine : IDisposable
             if (_motion.Done(elapsed))
             {
                 _motion = null;
+                _motionQuick = false;
                 _held = Targets(_level);
                 if (Near(_held, _stock!, 0.0002))
                 {
@@ -423,9 +441,55 @@ public sealed class AirShiftEngine : IDisposable
         if (rear is { } r) _carMemory.Rear = r;
         _carMemory.Clamp();
         ScheduleSave();
-        Plan(_level);
+        // A drag sends many stances: follow it quickly, unless an air move is on its way.
+        Plan(_level, quick: _motion is null || _motionQuick);
         _message = $"Stance front {_carMemory.Front:+0;-0;0} %, rear {_carMemory.Rear:+0;-0;0} %.";
         _ = source;
+        Publish();
+        return CommandResult.Done(_message);
+    }
+
+    private CommandResult SetWheels(WheelChange change, string source)
+    {
+        if (_carMemory is null || _wheels is null) return CommandResult.Refused("No car yet. Drive out into the world first.");
+        if (!WritesAllowed(out var reason)) return CommandResult.Refused(reason!);
+        var front = change.CamberFront is not null || change.TrackFront is not null || change.StockCamberFront;
+        var rear = change.CamberRear is not null || change.TrackRear is not null || change.StockCamberRear;
+        if (front && !_wheels.Available(true) || rear && !_wheels.Available(false))
+            return CommandResult.Refused(_wheels.Reason ?? "Camber and track are not ready on this car.");
+        if (change.StockCamberFront) _carMemory.CamberFront = null;
+        if (change.StockCamberRear) _carMemory.CamberRear = null;
+        if (change.CamberFront is { } cf) _carMemory.CamberFront = NearStock(cf, _wheels.StockCamber(true));
+        if (change.CamberRear is { } cr) _carMemory.CamberRear = NearStock(cr, _wheels.StockCamber(false));
+        if (change.TrackFront is { } tf) _carMemory.TrackFront = tf;
+        if (change.TrackRear is { } tr) _carMemory.TrackRear = tr;
+        _carMemory.Clamp();
+        _wheels.MarkDirty();
+        ScheduleSave();
+        _message = "Camber " + Degrees(_carMemory.CamberFront, _wheels.StockCamber(true)) + " / " + Degrees(_carMemory.CamberRear, _wheels.StockCamber(false))
+                   + $", track {_carMemory.TrackFront:+0;-0;0} / {_carMemory.TrackRear:+0;-0;0} mm.";
+        _ = source;
+        Publish();
+        return CommandResult.Done(_message);
+    }
+
+    private static double? NearStock(double value, double? stock) =>
+        stock is { } s && Math.Abs(value - s) < 0.05 ? null : value;
+
+    private static string Degrees(double? value, double? stock) =>
+        value is { } v ? $"{v:+0.0;-0.0;0.0}°" : stock is { } s ? $"{s:+0.0;-0.0;0.0}° (stock)" : "stock";
+
+    private CommandResult ResetCar(string source)
+    {
+        if (_carMemory is null || _car is null) return CommandResult.Refused("No car yet. Drive out into the world first.");
+        if (!WritesAllowed(out var reason)) return CommandResult.Refused(reason!);
+        _carMemory.Reset();
+        _carMemory.Clamp();
+        _wheels?.MarkDirty();
+        ScheduleSave();
+        Plan(AirLevel.Ride);
+        _message = "Back to stock: height, stance, camber and track width.";
+        Log?.Invoke($"Reset ({source}).");
         Publish();
         return CommandResult.Done(_message);
     }
@@ -436,6 +500,7 @@ public sealed class AirShiftEngine : IDisposable
         _motion = null;
         _level = AirLevel.Ride;
         Write(_stock);
+        _wheels?.Restore(_carMemory);
         _held = null;
         if (_carMemory is not null) _carMemory.LastWritten = null;
         ScheduleSave();
@@ -446,13 +511,16 @@ public sealed class AirShiftEngine : IDisposable
 
     private void Retarget() => Plan(_level);
 
-    private void Plan(AirLevel level)
+    private void Plan(AirLevel level, bool quick = false)
     {
         if (_stock is null || _radii is null || _current is null) return;
         _level = level;
         var from = _motion is not null ? _motion.At(_now - _motionStart) : (_held ?? _current);
         var to = Targets(level);
-        _motion = RideMotion.Plan(from, to, _stock, _radii, _profile.Wheels.IsFront, Settings, _profile.Limits.HardFloor);
+        _motion = quick
+            ? RideMotion.Quick(from, to, StanceSeconds)
+            : RideMotion.Plan(from, to, _stock, _radii, _profile.Wheels.IsFront, Settings, _profile.Limits.HardFloor);
+        _motionQuick = quick;
         _motionStart = _now;
     }
 
@@ -509,6 +577,11 @@ public sealed class AirShiftEngine : IDisposable
                 if (_carMemory is not null) _carMemory.LastWritten = null;
                 Log?.Invoke("Stock heights restored on exit.");
             }
+            if (_memory is { HasExited: false } && _wheels?.State.Held == true)
+            {
+                _wheels.Restore(_carMemory);
+                Log?.Invoke("Stock camber and track width restored on exit.");
+            }
         }
         finally
         {
@@ -542,6 +615,11 @@ public sealed class AirShiftEngine : IDisposable
             Progress = _motion is null ? 1 : Math.Round(_motion.Progress(_now - _motionStart), 3),
             FrontStance = _carMemory?.Front ?? 0,
             RearStance = _carMemory?.Rear ?? 0,
+            CamberFront = _carMemory?.CamberFront,
+            CamberRear = _carMemory?.CamberRear,
+            TrackFront = _carMemory?.TrackFront ?? 0,
+            TrackRear = _carMemory?.TrackRear ?? 0,
+            Wheels = _car is null ? new WheelState { Reason = _wheels?.Reason ?? "No car yet." } : _wheels?.State ?? new WheelState { Reason = "Forza Horizon 6 is not running." },
             FrontHeightPercent = AxlePercent(front: true),
             RearHeightPercent = AxlePercent(front: false),
             GuardOn = Settings.SpeedGuard,

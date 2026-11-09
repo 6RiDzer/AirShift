@@ -28,6 +28,17 @@ public sealed record EngineState
     public double FrontStance { get; init; }
     public double RearStance { get; init; }
 
+    /// <summary>Camber per axle the user set (left wheel's sign); null is the car's own.</summary>
+    public double? CamberFront { get; init; }
+
+    public double? CamberRear { get; init; }
+
+    /// <summary>Track width change per axle, in millimetres.</summary>
+    public double TrackFront { get; init; }
+
+    public double TrackRear { get; init; }
+    public WheelState Wheels { get; init; } = new() { Reason = "No car yet." };
+
     /// <summary>Live height per axle as a share of stock clearance: 0 = stock, -50 = half the clearance gone.</summary>
     public double FrontHeightPercent { get; init; }
 
@@ -39,6 +50,15 @@ public sealed record EngineState
     public int Reapplied { get; init; }
     public long Revision { get; init; }
 }
+
+/// <summary>A camber and track change from the app or the API; null fields stay as they are.</summary>
+public readonly record struct WheelChange(
+    double? CamberFront = null,
+    double? CamberRear = null,
+    double? TrackFront = null,
+    double? TrackRear = null,
+    bool StockCamberFront = false,
+    bool StockCamberRear = false);
 
 public sealed record CommandResult(bool Ok, string Message)
 {

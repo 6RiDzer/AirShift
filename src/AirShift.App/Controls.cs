@@ -144,7 +144,11 @@ internal sealed class Slider : Control
         }
     }
 
+    /// <summary>The value released by the mouse.</summary>
     public event Action<double>? Committed;
+
+    /// <summary>Each new value while the mouse drags the thumb.</summary>
+    public event Action<double>? Changed;
 
     private Rectangle Track => new(8, Height - 14, Width - 16, 4);
 
@@ -174,8 +178,11 @@ internal sealed class Slider : Control
     {
         var t = Math.Clamp((x - Track.X) / (double)Track.Width, 0, 1);
         var raw = Minimum + t * (Maximum - Minimum);
-        _value = Math.Clamp(Math.Round(raw / Step) * Step, Minimum, Maximum);
+        var value = Math.Clamp(Math.Round(raw / Step) * Step, Minimum, Maximum);
+        if (value == _value) return;
+        _value = value;
         Invalidate();
+        Changed?.Invoke(_value);
     }
 
     protected override void OnPaint(PaintEventArgs e)

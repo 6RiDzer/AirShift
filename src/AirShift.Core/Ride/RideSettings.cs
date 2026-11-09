@@ -20,7 +20,23 @@ public enum AxleOrder
 public sealed class RideSettings
 {
     public const double StanceMin = -50;
-    public const double StanceMax = 20;
+
+    /// <summary>Highest stance per axle: above it the car misbehaves in game (first test, 2026-11-09).</summary>
+    public const double FrontStanceMax = 15;
+
+    public const double RearStanceMax = 10;
+
+    /// <summary>Camber per axle, in degrees, as the game's tuning menu shows it (negative: tops in).</summary>
+    public const double CamberMin = -15;
+
+    public const double CamberMax = 5;
+
+    /// <summary>Track width change per axle, in millimetres (positive: wheels further out).</summary>
+    public const double TrackMin = -100;
+
+    public const double TrackMax = 100;
+
+    public static double StanceMax(bool front) => front ? FrontStanceMax : RearStanceMax;
 
     /// <summary>Share of each wheel's stock clearance removed at the Low preset.</summary>
     public double LowDropPercent { get; set; } = 45;
@@ -31,7 +47,7 @@ public sealed class RideSettings
     /// <summary>Share of stock clearance that is always kept, whatever the preset and stance.</summary>
     public double FloorPercent { get; set; } = 12;
 
-    /// <summary>Static ride height per axle, as a share of stock clearance (-50 to +20).</summary>
+    /// <summary>Static ride height per axle, as a share of stock clearance (-50 to +15 front, +10 rear).</summary>
     public double FrontStancePercent { get; set; }
 
     public double RearStancePercent { get; set; }
@@ -71,8 +87,8 @@ public sealed class RideSettings
         LowDropPercent = Math.Clamp(Finite(LowDropPercent, 45), 0, 100);
         ParkedDropPercent = Math.Clamp(Finite(ParkedDropPercent, 80), 0, 100);
         FloorPercent = Math.Clamp(Finite(FloorPercent, 12), 5, 60);
-        FrontStancePercent = Math.Clamp(Finite(FrontStancePercent, 0), StanceMin, StanceMax);
-        RearStancePercent = Math.Clamp(Finite(RearStancePercent, 0), StanceMin, StanceMax);
+        FrontStancePercent = Math.Clamp(Finite(FrontStancePercent, 0), StanceMin, FrontStanceMax);
+        RearStancePercent = Math.Clamp(Finite(RearStancePercent, 0), StanceMin, RearStanceMax);
         ExhaustSeconds = Math.Clamp(Finite(ExhaustSeconds, 1.4), 0.3, 8);
         FillSeconds = Math.Clamp(Finite(FillSeconds, 2.6), 0.5, 12);
         AxleDelaySeconds = Math.Clamp(Finite(AxleDelaySeconds, 0.35), 0, 2);
@@ -102,13 +118,59 @@ public sealed class CarMemory
     /// <summary>The last heights AirShift wrote for this car.</summary>
     public double[]? LastWritten { get; set; }
 
+    /// <summary>Camber per axle in degrees (left wheel's sign, the right wheel mirrors it); null keeps the car's own.</summary>
+    public double? CamberFront { get; set; }
+
+    public double? CamberRear { get; set; }
+
+    /// <summary>Track width change per axle, in millimetres.</summary>
+    public double TrackFront { get; set; }
+
+    public double TrackRear { get; set; }
+
+    /// <summary>
+    /// While AirShift holds this car's wheels: each wheel's own camber before AirShift turned it
+    /// and how far it turned and moved each one, so a restart after a crash finds stock again.
+    /// </summary>
+    public double[]? WheelStockCamber { get; set; }
+
+    public double[]? WheelStockTrack { get; set; }
+
+    public double[]? WheelCamberShift { get; set; }
+
+    public double[]? WheelTrackShift { get; set; }
+
     [JsonIgnore]
     public bool HasStance => Math.Abs(Front) > 0.01 || Math.Abs(Rear) > 0.01;
 
+    [JsonIgnore]
+    public bool HasWheels => CamberFront is not null || CamberRear is not null
+                             || Math.Abs(TrackFront) > 0.01 || Math.Abs(TrackRear) > 0.01;
+
     public void Clamp()
     {
-        Front = Math.Clamp(double.IsFinite(Front) ? Front : 0, RideSettings.StanceMin, RideSettings.StanceMax);
-        Rear = Math.Clamp(double.IsFinite(Rear) ? Rear : 0, RideSettings.StanceMin, RideSettings.StanceMax);
+        Front = Math.Clamp(double.IsFinite(Front) ? Front : 0, RideSettings.StanceMin, RideSettings.FrontStanceMax);
+        Rear = Math.Clamp(double.IsFinite(Rear) ? Rear : 0, RideSettings.StanceMin, RideSettings.RearStanceMax);
+        CamberFront = Camber(CamberFront);
+        CamberRear = Camber(CamberRear);
+        TrackFront = Math.Clamp(double.IsFinite(TrackFront) ? TrackFront : 0, RideSettings.TrackMin, RideSettings.TrackMax);
+        TrackRear = Math.Clamp(double.IsFinite(TrackRear) ? TrackRear : 0, RideSettings.TrackMin, RideSettings.TrackMax);
+        if (WheelStockCamber is { Length: not 4 } || WheelStockTrack is { Length: not 4 }
+            || WheelCamberShift is { Length: not 4 } || WheelTrackShift is { Length: not 4 })
+        {
+            WheelStockCamber = WheelStockTrack = WheelCamberShift = WheelTrackShift = null;
+        }
+    }
+
+    private static double? Camber(double? value) =>
+        value is { } v && double.IsFinite(v) ? Math.Clamp(v, RideSettings.CamberMin, RideSettings.CamberMax) : null;
+
+    /// <summary>Back to the car's own height, camber and track width.</summary>
+    public void Reset()
+    {
+        Front = Rear = 0;
+        CamberFront = CamberRear = null;
+        TrackFront = TrackRear = 0;
     }
 }
 
